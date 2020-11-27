@@ -1,0 +1,13 @@
+demographics: &D
+  - dm_*
+other: &O
+  - offense_type
+  - cleared
+  - injury_severity
+  - weapon_type
+  - relationship_type
+  - arrest
+  - biased
+
+allowed_edges:
+  - {from: *D, to: *O}
