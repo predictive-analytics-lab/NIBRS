@@ -1,6 +1,6 @@
-demographics: &D
+group_1: &D
   - dm_*
-other: &O
+group_2: &O
   - offense_type
   - cleared
   - injury_severity
