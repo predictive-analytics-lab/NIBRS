@@ -2,9 +2,6 @@ target: "arrest"
 outcome_reference_level: "No"
 outcome_target_levels: ["Yes"]
 interventions:
-  - variable: "biased"
-    reference_level: "False"
-    target_levels: ["True"]
   - variable: "relationship_type"
     reference_level: "known"
     target_levels: ["family", "unknown", "stranger"]
