@@ -1,3 +1,3 @@
 #!/bin/bash
 
-intervene real --data ../data/NIBRS_202011301746.csv --output ../output/intervene_ensemble --constraints config_files/basic_constraints.yml --interventions config_files/basic_intervention.yml
+intervene real --data ../data/NIBRS_full_202012071235.csv --output ../output/ensemble_run_071220 --constraints config_files/full_constraints.yml --interventions config_files/full_intervention.yml --ensemble
