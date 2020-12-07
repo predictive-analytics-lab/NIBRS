@@ -14,5 +14,9 @@ group_3: &R
   - biased
 
 allowed_edges:
+  - {from: [], to: *O}
   - {from: *O, to: *V}
   - {from: [*O, *V], to: *R}
+
+output_nodes:
+  - arrest
