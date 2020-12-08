@@ -4,12 +4,10 @@ outcome_target_levels: ["Yes"]
 priors:
   - variable: "relationship_type"
     level: "stranger"
-  - variable: "weapon_type"
-    level: "firearm"
 interventions:
   - variable: "weapon_type"
-    reference_level: "object"
-    target_levels: ["none", "unknown", "firearm"]
+    reference_level: "none"
+    target_levels: ["object", "unknown", "firearm"]
   - variable: "injury_severity"
     reference_level: "none"
     target_levels: ["minor", "major"]
