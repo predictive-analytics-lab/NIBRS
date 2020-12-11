@@ -19,7 +19,7 @@ allowed_edges:
   - {from: [*D, *R, *A], to: *A}
 
 include_edges:
-  - {from: [dm_offender_race_ethnicity, dm_victim_race_ethnicity], to: [arrest_type]}
+  - {from: [dm_victim_race_ethnicity], to: [arrest_type]}
   - {from: [arrest_type], to: [arrest]}
 
 output_nodes:
