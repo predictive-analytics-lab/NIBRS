@@ -1,0 +1,28 @@
+group_demographics: &D
+  - dm_*
+  - relationship_type
+
+group_offense: &R
+  - offense_type
+  - injury_severity
+  - weapon_type
+  - biased
+
+group_arrest: &A
+  - arrest
+  - arrest_type
+  - cleared
+
+allowed_edges:
+  - {from: *D, to: *D}
+  - {from: [*D, *R], to: *R}
+  - {from: [*D, *R, *A], to: *A}
+
+include_edges:
+  - {from: [dm_offender_race_ethnicity, dm_victim_race_ethnicity], to: [arrest_type]}
+  - {from: [arrest_type], to: [arrest]}
+
+output_nodes:
+  - arrest
+  - cleared
+
