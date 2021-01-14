@@ -1,0 +1,31 @@
+target: "arrest"
+outcome_reference_level: "No"
+outcome_target_levels: ["Yes"]
+interventions:
+  - variable: "weapon_type"
+    reference_level: "none"
+    target_levels: ["object", "unknown", "firearm"]
+  - variable: "injury_severity"
+    reference_level: "none"
+    target_levels: ["minor", "major"]
+  - variable: "dm_offender_race_ethnicity"
+    reference_level: "white"
+    target_levels: ["black", "hispanic/latino", "other/mixed", "unknown"]
+  - variable: "dm_offender_sex"
+    reference_level: "M"
+    target_levels: ["F", "U"]
+  - variable: "dm_offender_age"
+    reference_level: ">42"
+    target_levels: ["32-42", "25-31", "18-24", "<18"]
+  - variable: "offense_type"
+    reference_level: "simp_assault"
+    target_levels: ["intimidation", "agg_assault", "rape", "other"]
+  - variable: "arrest_type"
+    reference_level: "No Arrest"
+    target_levels: ["On View", "Taken INTO Custody", "Summoned / Cited"]
+  - variable: "crime_against"
+    reference_level: "Person"
+    target_levels: ["Property", "Society"]
+  - variable: "offense_category"
+    reference_level: "Assault Offenses"
+    target_levels: ["Drug/Narcotic Offenses", "Larceny/Theft Offenses", "Destruction/Damage/Vandalism of Property", "combined_levels"]
