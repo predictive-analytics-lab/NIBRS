@@ -19,7 +19,7 @@ interventions:
     target_levels: ["32-42", "25-31", "18-24", "<18"]
   - variable: "offense_type"
     reference_level: "simp_assault"
-    target_levels: ["intimidation", "agg_assault", "rape", "other"]
+    target_levels: ["intimidation", "agg_assault", "combined_levels", "other"]
   - variable: "arrest_type"
     reference_level: "No Arrest"
     target_levels: ["On View", "Taken INTO Custody", "Summoned / Cited"]

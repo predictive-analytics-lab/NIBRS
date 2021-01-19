@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 if __name__ == "__main__":
-    data_path = Path("../data/NIBRS_full_all2019_202012091928.csv").resolve()
+    data_path = Path("../data/20210112_all2019_5levels.csv").resolve()
     assert data_path.exists(), f"Data does not exist at path {data_path}"
     df = pd.read_csv(data_path)
     profile = ProfileReport(df, title=f"{data_path.stem} Report")
