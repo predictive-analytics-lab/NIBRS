@@ -7,7 +7,7 @@ from time import sleep
 aws_url_pre_2016 = 'http://s3-us-gov-west-1.amazonaws.com/cg-d3f0433b-a53e-4934-8b94-c678aa2cbaf3'
 aws_url_from_2016 = 'http://s3-us-gov-west-1.amazonaws.com/cg-d4b776d0-d898-4153-90c8-8336f86bdfec'
 
-state_abbreviations = [s.split(',')[1].strip() for s in """Alabama, AL
+state_abbreviations = [s.split(",")[1].strip() for s in """Alabama, AL
     Alaska, AK
     Arizona, AZ
     Arkansas, AR
