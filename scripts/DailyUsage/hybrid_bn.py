@@ -20,11 +20,11 @@ sex_dict = {
 }
 
 age_dict = {
-    1: "12-17 Years Old",
-    2: "18-25 Years Old",
-    3: "26-34 Years Old",
-    4: "35-49 Years Old",
-    5: "50 or Older",
+    1: "12-17",
+    2: "18-25",
+    3: "26-34",
+    4: "35-49",
+    5: "50+",
 }
 
 def usage(n):
@@ -49,11 +49,12 @@ cpt = np.stack([x.copy(), neg_x], axis=-1)
 
 
 # %%
-dag = DAG.from_modelstring("[uses_cannabis|pop_race:pop_age:pop_sex][pop_race|pop_age:pop_sex][pop_age|pop_sex][pop_sex]")
+dag = DAG.from_modelstring("[incident|uses_cannabis:pop_race:pop_age:pop_sex][uses_cannabis|pop_race:pop_age:pop_sex][pop_race|pop_age:pop_sex][pop_age|pop_sex][pop_sex]")
 dag.get_node("pop_sex")["levels"] = list(x.IRSEX.values)
 dag.get_node("pop_age")["levels"] = list(x.CATAG3.values)
 dag.get_node("pop_race")["levels"] = list(x.NEWRACE2.values)
 dag.get_node("uses_cannabis")["levels"] = ["y", "n"]
+dag.get_node("incident")["levels"] = ["y", "n"]
 
 # %%
 dag.get_node("uses_cannabis")["CPD"] = baynet.parameters.ConditionalProbabilityTable(dag.get_node("uses_cannabis"))
@@ -73,14 +74,14 @@ def RACE(x):
 
 def AGE(x):
     if x < 18:
-        return "12-17 Years Old"
+        return "12-17"
     if x < 26:
-        return "18-25 Years Old"
+        return "18-25"
     if x < 35:
-        return "26-34 Years Old"
+        return "26-34"
     if x < 50:
-        return "35-49 Years Old"
-    return "50 or Older"
+        return "35-49"
+    return "50+"
 
 df = pd.read_csv("sc-est2019-alldata5.csv")
 
