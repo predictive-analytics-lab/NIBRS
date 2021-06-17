@@ -146,5 +146,19 @@ def get_incident_cpt(pop_df, usage_df, inc_df, dem_order):
 cols = ["AGE", "SEX", "RACE"]
 inc_cpt = get_incident_cpt(df, drug_use_df, nibrs_df, cols)
 inc_cpt.plot(kind="bar")
+inc_array = inc_cpt.to_xarray().values
+inc_array = np.stack([inc_array, np.zeros(inc_array.shape)], axis=-1)
+inc_array = np.stack([inc_array, 1-inc_array], axis=-1)
+
+# %%
+dag.get_node("incident")["CPD"] = baynet.parameters.ConditionalProbabilityTable(dag.get_node("incident"))
+dag.get_node("incident")["CPD"].parents = ["pop_" + col.lower() for col in cols] + ["uses_cannabis"]
+
+# %%
+
+dag.get_node("incident")["CPD"].array = inc_array
+dag.get_node("incident")["CPD"].rescale_probabilities()
+
+
 
 # %%
