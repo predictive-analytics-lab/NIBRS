@@ -1,5 +1,5 @@
 select
-	ofr.offender_id as offender_id,
+--	ofr.offender_id as offender_id,
 --	ofr.incident_id as incident_id,
 	case
 		when ofr.ethnicity_id = 1 then 'hispanic/latino'
@@ -14,12 +14,11 @@ select
 		else 'unknown'
 	end as dm_offender_sex,
 	case
-		when ofr.age_num < 18 then '(0, 18)'
-		when ofr.age_num < 21 then '[18, 21)'
-		when ofr.age_num < 24 then '[21, 24)'
-		when ofr.age_num < 31 then '[24, 31)'
-		when ofr.age_num < 42 then '[31, 42)'
-		when ofr.age_num > 31 then '[42, +∞)'
+		when ofr.age_num < 18 then '12-17'
+		when ofr.age_num < 26 then '18-25'
+		when ofr.age_num < 35 then '26-34'
+		when ofr.age_num < 50 then '35-49'
+		when ofr.age_num >= 50  then '50+'
 		else 'unknown'
 	end as dm_offender_age,
 --	ofr.offender_seq_num,
@@ -190,7 +189,7 @@ left join (
 ) inc_counts on ofr.incident_id = inc_counts.incident_id
 left join agencies ag on i.agency_id = ag.agency_id
 left join nibrs_arrest_type nat on nat.arrest_type_id = a.arrest_type_id
-where other_offense = 0 and inc_counts.location_count = 1 and sus_drug.non_mass_units = 0 and ca.other_criminal_acts = 0
+where other_offense = 0 and inc_counts.location_count = 1 and sus_drug.non_mass_units = 0 and ca.other_criminal_acts = 0 and (ofr.ethnicity_id = 1 or ofr.race_id in (1, 2)) and ofr.sex_code ~ '(M|F)' and ofr.age_num is not null and ofr.age_num > 11
 
 
 

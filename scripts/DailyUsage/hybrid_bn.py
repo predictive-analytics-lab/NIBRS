@@ -3,8 +3,9 @@ import numpy as np
 import pandas as pd
 import baynet
 from baynet import DAG
+import seaborn as sns
 
-drug_use_df = pd.read_csv("NSDUH_2019_Tab.txt", sep="\t")
+drug_use_df = pd.read_csv("../../data/NSDUH_2019_Tab.txt", sep="\t")
 race_dict = {1 : "white",
 2 : "black",
 3 : "other/mixed",
@@ -56,9 +57,9 @@ cpt = np.stack([x.copy(), neg_x], axis=-1)
 
 # %%
 dag = DAG.from_modelstring("[incident|uses_cannabis:pop_race:pop_age:pop_sex][uses_cannabis|pop_race:pop_age:pop_sex][pop_race|pop_age:pop_sex][pop_age|pop_sex][pop_sex]")
-dag.get_node("pop_sex")["levels"] = list(x.SEX.values)
-dag.get_node("pop_age")["levels"] = list(x.AGE.values)
-dag.get_node("pop_race")["levels"] = list(x.RACE.values)
+dag.get_node("pop_sex")["levels"] = drug_use_df.SEX.unique().tolist()
+dag.get_node("pop_age")["levels"] = drug_use_df.AGE.unique().tolist()
+dag.get_node("pop_race")["levels"] = drug_use_df.RACE.unique().tolist()
 dag.get_node("uses_cannabis")["levels"] = ["y", "n"]
 dag.get_node("incident")["levels"] = ["y", "n"]
 
@@ -89,7 +90,7 @@ def AGE(x):
         return "35-49"
     return "50+"
 
-df = pd.read_csv("sc-est2019-alldata5.csv")
+df = pd.read_csv("../../data/sc-est2019-alldata5.csv")
 
 df = df[df.ORIGIN != 0]
 df.SEX = df.SEX.map(sex_dict)
@@ -126,15 +127,13 @@ dag.get_node("pop_age")["CPD"].rescale_probabilities()
 
 
 # %%
-nibrs_df = pd.read_csv("drugs_2019_20210603.csv", usecols=["dm_offender_race_ethnicity", "dm_offender_age", "dm_offender_sex", "arrest_type","crack_mass","cocaine_mass","heroin_mass","cannabis_mass","meth_amphetamines_mass","other_drugs"])
+nibrs_df = pd.read_csv("../../data/cannabis_2019_20210608.csv", usecols=["dm_offender_race_ethnicity", "dm_offender_age", "dm_offender_sex", "arrest_type","cannabis_mass"])
 nibrs_df.rename(columns={
     "dm_offender_race_ethnicity": "RACE",
     "dm_offender_age": "AGE",
     "dm_offender_sex": "SEX"
 }, inplace=True)
-nibrs_df = nibrs_df[nibrs_df.arrest_type != "No Arrest"]
-nibrs_df = nibrs_df[(nibrs_df.cannabis_mass > 0) & (nibrs_df.crack_mass + nibrs_df.cocaine_mass + nibrs_df.heroin_mass + nibrs_df.meth_amphetamines_mass + nibrs_df.other_drugs == 0)]
-
+nibrs_arrests = nibrs_df[nibrs_df.arrest_type != "No Arrest"]
 
 # %%
 def get_incident_cpt(pop_df, usage_df, inc_df, dem_order):
@@ -145,6 +144,34 @@ def get_incident_cpt(pop_df, usage_df, inc_df, dem_order):
     return inc_cpt
 cols = ["AGE", "SEX", "RACE"]
 inc_cpt = get_incident_cpt(df, drug_use_df, nibrs_df, cols)
-inc_cpt.plot(kind="bar")
+arrests_cpt =  get_incident_cpt(df, drug_use_df, nibrs_arrests, cols)
+
+# %%
+
+inc_df = inc_cpt.to_frame().reset_index()
+inc_df["TYPE"] = "Incident"
+
+arrest_df = arrests_cpt.to_frame().reset_index()
+arrest_df["TYPE"] = "Arrest"
+
+
+plotting_data = pd.concat([inc_df, arrest_df])
+
+# %%
+p = ["#a7ffeb", "#00695c"]
+
+sns.set_context("paper")
+sns.set_style("whitegrid")
+sns.set_context(rc = {'patch.linewidth': 1.0})
+sns.set_context(rc = {'bar.edgecolor': "black"})
+
+g = sns.FacetGrid(plotting_data, row = 'AGE',  col = 'SEX', hue = 'TYPE', sharex=False, palette=p)
+g = (g.map(sns.barplot, 'RACE', 0, ci = None).add_legend())
+g.despine(left=True)
+g.set_ylabels("~P(Incident|Use)")
+
+for ax in g.axes.flat:
+    for patch in ax.patches:
+        patch.set_edgecolor("black")
 
 # %%
