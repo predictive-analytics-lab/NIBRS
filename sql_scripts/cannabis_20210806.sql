@@ -26,7 +26,12 @@ select
 	i.cleared_except_id,
 	coalesce(nat.arrest_type_name, 'No Arrest') arrest_type,
 	-- ag.state_abbr,
---	concat(ag.pub_agency_name, '-', ag.state_name) as agency,
+	concat(ag.pub_agency_name, coalesce(ag.pub_agency_unit, ''), '-', ag.state_name) as agency,
+	ag.agency_id,
+	ag.ori,
+	ag.population_group_code,
+	ag.county_name,
+	ag.male_officer + ag.female_officer as officers,
 --	inc.drug_offense,
 --	inc.drug_equipment_offense,
 --    sus_drug.unique_drug_type_count,
@@ -197,7 +202,7 @@ left join (
 left join agencies ag on i.agency_id = ag.agency_id
 left join nibrs_arrest_type nat on nat.arrest_type_id = a.arrest_type_id
 where other_offense = 0 and inc_counts.location_count = 1 and sus_drug.non_mass_units = 0 and ca.other_criminal_acts = 0 and (ofr.ethnicity_id = 1 or ofr.race_id in (1, 2)) and ofr.sex_code ~ '(M|F)' and ofr.age_num is not null and ofr.age_num > 11 and sus_drug.cannabis_mass > 0 and sus_drug.unique_drug_type_count = 1
-) To '../data/cannabis_2019_20210608.csv' With CSV DELIMITER ',' HEADER;
+) To '/mnt/c/Users/Bradley/Desktop/NIBRS/data/cannabis_agency_2019_20210608.csv' With CSV DELIMITER ',' HEADER;
 
 
 

@@ -5,7 +5,10 @@ __pycache__/
 
 # C extensions
 *.so
-
+.vscode
+turing_output/
+sync.sh
+output/
 # Distribution / packaging
 .Python
 build/
@@ -89,3 +92,4 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+/data

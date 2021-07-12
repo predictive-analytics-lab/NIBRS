@@ -1,0 +1,22 @@
+group_1: &O
+  - dm_o*
+​
+group_2: &V
+  - dm_v*
+​
+group_3: &R
+  - offense_type
+  - cleared
+  - injury_severity
+  - weapon_type
+  - relationship_type
+  - arrest
+  - biased
+​
+allowed_edges:
+  - {from: [], to: *O}
+  - {from: *O, to: *V}
+  - {from: [*O, *V], to: *R}
+
+output_nodes:
+  - arrest

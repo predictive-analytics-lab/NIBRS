@@ -1,0 +1,46 @@
+target: "arrest"
+outcome_reference_level: "No"
+outcome_target_levels: ["Yes"]
+interventions:
+  - variable: "relationship"
+    reference_level: "BF/GF"
+    target_levels: ["CL-Spouse", "BF/GF-gay", "Spouse"]
+  - variable: "weapon_type"
+    reference_level: "object"
+    target_levels: ["none", "unknown", "firearm"]
+  - variable: "injury_severity"
+    reference_level: "none"
+    target_levels: ["minor", "major"]
+#  - variable: "dm_victim_residency"
+#    reference_level: "R"
+#    target_levels: ["U", "N"]
+  - variable: "dm_victim_hispanic_latino"
+    reference_level: "no"
+    target_levels: ["yes", "unknown"]
+  - variable: "dm_victim_race"
+    reference_level: "white"
+    target_levels: ["black", "other", "unknown"]
+  - variable: "dm_victim_sex"
+    reference_level: "M"
+    target_levels: ["F", "U"]
+  - variable: "dm_victim_age"
+    reference_level: ">42"
+    target_levels: ["32-42", "25-31", "18-24", "<18"]
+  - variable: "dm_offender_hispanic_latino"
+    reference_level: "no"
+    target_levels: ["yes", "unknown"]
+  - variable: "dm_offender_race"
+    reference_level: "white"
+    target_levels: ["black", "other", "unknown"]
+  - variable: "dm_offender_sex"
+    reference_level: "M"
+    target_levels: ["F", "U"]
+  - variable: "dm_offender_age"
+    reference_level: ">42"
+    target_levels: ["32-42", "25-31", "18-24", "<18"]
+#  - variable: "cleared"
+#    reference_level: "not_cleared"
+#    target_levels: ["uncooperative", "declined", "other"]
+  - variable: "offense_type"
+    reference_level: "simp_assault"
+    target_levels: ["intimidation", "agg_assault", "rape", "other"]
