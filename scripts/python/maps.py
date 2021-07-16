@@ -7,7 +7,8 @@ import numpy as np
 data_path = Path(__file__).parent.parent.parent / "data"
 plot_path = Path(__file__).parent.parent.parent / "choropleths"
 agency_df = pd.read_csv(data_path / "misc" / "agency_participation.csv")
-
+county_cannabis_usage = pd.read_csv(data_path / "demographics" / "estimated_cannabis_by_county.csv", dtype={'FIPS': object}, index_col=0)
+county_cannabis_usage["STATEFIPS"] = county_cannabis_usage.apply(lambda x: x["FIPS"][:2], axis=1)
 # %%
 def agency_name(x):
     return f"{x.pub_agency_name}{x.pub_agency_unit} - {x.state_name}"
@@ -93,3 +94,37 @@ fig.write_html(plot_path / "agency_participation_pop.html")
 
 # %%
 
+fig = px.choropleth(county_cannabis_usage, geojson=counties, locations='FIPS', color="cannabis_usage",
+                           color_continuous_scale="Viridis",
+                           range_color=(0.05, 0.2),
+                           scope="usa",
+                           labels={"cannabis_usage":'Est. Cannabis Usage'}
+                          )
+fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
+fig.update_layout(geo=dict(bgcolor= 'rgba(0,0,0,0)'))
+
+fig.write_html(plot_path / "estimated_cannabis_usage.html")
+# %%
+
+wm = lambda x: np.average(x, weights=county_cannabis_usage.loc[x.index, "frequency"])
+
+# Groupby and aggregate with namedAgg [1]:
+state_cannabis_usage = county_cannabis_usage.groupby(["STATEFIPS"]).agg(weighted_usage=("cannabis_usage", wm)).reset_index()
+state_abbr = pd.read_csv(data_path / "misc" / "FIPS_ABBRV.csv", usecols=["FIPS", "ABBRV"], dtype={'FIPS': object})
+state_abbr = state_abbr.rename(columns={"FIPS":"STATEFIPS"})
+
+state_cannabis_usage = pd.merge(state_cannabis_usage, state_abbr, how='left', on="STATEFIPS")
+
+
+fig = px.choropleth(state_cannabis_usage, locationmode="USA-states", locations='ABBRV', color="weighted_usage",
+                           color_continuous_scale="Viridis",
+                           range_color=(0.05, 0.2),
+                           scope="usa",
+                           labels={"weighted_usage":'Weighted Est. Cannabis Usage'}
+                          )
+fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
+fig.update_layout(geo=dict(bgcolor= 'rgba(0,0,0,0)'))
+
+fig.show()
+fig.write_html(plot_path / "estimated_cannabis_usage_state.html")
+# %%
