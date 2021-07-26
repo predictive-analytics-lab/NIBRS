@@ -10,7 +10,6 @@ df = pd.read_csv(data_path / "demographics" / "census-2019-county.csv", encoding
 df = df[df["YEAR"] == 12]
 df = pd.melt(df, id_vars = ["AGEGRP", "COUNTY", "STATE"], value_vars = ["WA_MALE", "WA_FEMALE", "BA_MALE", "BA_FEMALE"], var_name = "RACESEX", value_name = "frequency")
 
-
 def RACE(x):
     if x["RACESEX"] == "WA_MALE" or x["RACESEX"] == "WA_FEMALE":
         return "White"
@@ -117,6 +116,22 @@ df["AGE"] = df.apply(age_agg, axis=1)
 df = df[df["AGE"] != "drop"]
 df = df.groupby(["AGE", "SEX", "RACE", "FIPS"]).sum().reset_index()
 df = df.drop(["COUNTY", "STATE"], axis=1)
+
+subregion_df = pd.read_csv(data_path / "misc" / "subregion_counties.csv", dtype={'FIPS': object}, usecols=["State", "Region", "FIPS"])
+
+# %%
+
+# def fips_fix(x):
+#     if int(x) < 10_000:
+#         return f"0{x}"
+#     else:
+#         return str(x)
+
+# subregion_df["FIPS"] = subregion_df.FIPS.map(fips_fix)
+
+df = pd.merge(df, subregion_df, how='left', on='FIPS')
+
+df["STATEREGION"] = df["State"] + "-" + df["Region"]
 # %%
 
 county1 = df[(df["SEX"] == "Female") & (df["FIPS"] == "56045") & (df["RACE"] == "Black")]
