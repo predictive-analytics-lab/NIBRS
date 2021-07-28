@@ -1,24 +1,28 @@
-# %%
 from pathlib import Path
 from matplotlib import pyplot as plt
 import pandas as pd
+
 data_path = Path(__file__).parent.parent.parent / "data"
 
 
-# %%
-df = pd.read_csv(data_path / "demographics" / "census-2019-county.csv", encoding = "ISO-8859-1", engine='python', usecols=["AGEGRP", "COUNTY", "STATE", "WA_MALE", "WA_FEMALE", "BA_MALE", "BA_FEMALE", "YEAR"], dtype={'STATE': object, "COUNTY":object}) # RACES NOT IN COMBINATION
+df = pd.read_csv(data_path / "demographics" / "census-2019-county.csv", encoding="ISO-8859-1", engine='python', usecols=[
+                 "AGEGRP", "COUNTY", "STATE", "WA_MALE", "WA_FEMALE", "BA_MALE", "BA_FEMALE", "YEAR"], dtype={'STATE': object, "COUNTY": object})  # RACES NOT IN COMBINATION
 df = df[df["YEAR"] == 12]
-df = pd.melt(df, id_vars = ["AGEGRP", "COUNTY", "STATE"], value_vars = ["WA_MALE", "WA_FEMALE", "BA_MALE", "BA_FEMALE"], var_name = "RACESEX", value_name = "frequency")
+df = pd.melt(df, id_vars=["AGEGRP", "COUNTY", "STATE"], value_vars=[
+             "WA_MALE", "WA_FEMALE", "BA_MALE", "BA_FEMALE"], var_name="RACESEX", value_name="frequency")
+
 
 def RACE(x):
     if x["RACESEX"] == "WA_MALE" or x["RACESEX"] == "WA_FEMALE":
         return "White"
     return "Black"
 
+
 def SEX(x):
-    if x["RACESEX"] == "WA_MALE" or  x["RACESEX"] == "BA_MALE":
+    if x["RACESEX"] == "WA_MALE" or x["RACESEX"] == "BA_MALE":
         return "Male"
     return "Female"
+
 
 def AGE(x):
     if x == 1:
@@ -60,6 +64,7 @@ def AGE(x):
         return "85+"
     return "total"
 
+
 df["SEX"] = df.apply(SEX, axis=1)
 df["RACE"] = df.apply(RACE, axis=1)
 df["AGE"] = df["AGEGRP"].map(AGE)
@@ -68,15 +73,16 @@ df["FIPS"] = df["STATE"] + df["COUNTY"]
 df = df[df.AGE != "total"]
 
 df = df.drop(["AGEGRP", "RACESEX"], axis=1)
-# %%
 
-df = pd.read_csv(data_path / "demographics" / "counties_processed.csv", dtype={'FIPS': object}, index_col=0)
-# %%
+df = pd.read_csv(data_path / "demographics" /
+                 "counties_processed.csv", dtype={'FIPS': object}, index_col=0)
 
 df.frequency /= 4
 
+
 def age_lowerbound(x):
     return int(x["AGE"].split("-")[0].split("+")[0])
+
 
 df.AGE = df.apply(age_lowerbound, axis=1)
 
@@ -89,14 +95,7 @@ df_3.AGE += 2
 df_4.AGE += 3
 
 df = pd.concat([df, df_2, df_3, df_4])
-# %%
-# age_dict = {
-#     1: "12-17",
-#     2: "18-25",
-#     3: "26-34",
-#     4: "35-49",
-#     5: "50+",
-# }
+
 
 def age_agg(x):
     if x["AGE"] < 12:
@@ -111,32 +110,21 @@ def age_agg(x):
         return "35-49"
     return "50+"
 
+
 df["AGE"] = df.apply(age_agg, axis=1)
-# %%
 df = df[df["AGE"] != "drop"]
 df = df.groupby(["AGE", "SEX", "RACE", "FIPS"]).sum().reset_index()
 df = df.drop(["COUNTY", "STATE"], axis=1)
 
-subregion_df = pd.read_csv(data_path / "misc" / "subregion_counties.csv", dtype={'FIPS': object}, usecols=["State", "Region", "FIPS"])
-
-# %%
-
-# def fips_fix(x):
-#     if int(x) < 10_000:
-#         return f"0{x}"
-#     else:
-#         return str(x)
-
-# subregion_df["FIPS"] = subregion_df.FIPS.map(fips_fix)
+subregion_df = pd.read_csv(data_path / "misc" / "subregion_counties.csv",
+                           dtype={'FIPS': object}, usecols=["State", "Region", "FIPS"])
 
 df = pd.merge(df, subregion_df, how='left', on='FIPS')
 
 df["STATEREGION"] = df["State"] + "-" + df["Region"]
-# %%
+df = df.dropna(subset=["STATEREGION"], how="all")
 
-county1 = df[(df["SEX"] == "Female") & (df["FIPS"] == "56045") & (df["RACE"] == "Black")]
-plt.bar(x=county1.AGE, height=county1.frequency)
-# %%
+df["SEX"] = df.SEX.apply(lambda x: x.lower())
+df["RACE"] = df.RACE.apply(lambda x: x.lower())
 
-df.to_csv("../../data/demographics/counties_agecat.csv")
-# %%
+df.to_csv(data_path / "demographics" / "county_census.csv")
