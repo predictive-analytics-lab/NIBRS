@@ -10,7 +10,11 @@ from itertools import product
 
 data_path = Path(__file__).parent.parent.parent / "data"
 df = pd.read_csv(data_path / "demographics" / "counties_agecat.csv", dtype={'FIPS': object})
+subregion_df = pd.read_csv(data_path / "misc" / "subregion_counties.csv", dtype={'FIPS': object}, usecols=["State", "Region", "FIPS"])
+
 drug_use_df = pd.read_csv(data_path / "NSDUH" / "NSDUH_2019_Tab.txt", sep="\t", usecols=["NEWRACE2", "CATAG3", "IRSEX", "MJDAY30A"])
+df = df.dropna(subset=["STATEREGION"], how="all")
+
 race_dict = {
     1 : "white",
     2 : "black",
@@ -59,7 +63,7 @@ drug_use_df.SEX = drug_use_df.SEX.map(sex_dict)
 drug_use_df["MJBINARY"] = drug_use_df.MJDAY30A.map(binary_usage)
 drug_use_df.MJDAY30A = drug_use_df.MJDAY30A.map(usage)
 
-dag = DAG.from_modelstring("[incident|region:pop_age:pop_race:pop_sex:uses_cannabis][uses_cannabis|pop_age:pop_race:pop_sex][pop_race|region:pop_age:pop_sex][pop_age|region:pop_sex][pop_sex|region][region]")
+dag = DAG.from_modelstring("[incident|pop_age:pop_race:pop_sex:region:uses_cannabis][uses_cannabis|pop_age:pop_race:pop_sex][pop_race|pop_age:pop_sex:region][pop_age|pop_sex:region][pop_sex|region][region]")
 dag.get_node("pop_sex")["levels"] = drug_use_df.SEX.unique().tolist()
 dag.get_node("pop_age")["levels"] = drug_use_df.AGE.unique().tolist()
 dag.get_node("pop_race")["levels"] = drug_use_df.RACE.unique().tolist()
@@ -124,7 +128,7 @@ def get_cpd(data, child, parents, norm=True):
         return (grouped / data["frequency"].sum()).values
 
 dag.get_node("pop_race")["CPD"] = baynet.parameters.ConditionalProbabilityTable(dag.get_node("pop_race"))
-dag.get_node("pop_race")["CPD"].array = get_cpd(df, "RACE", ["STATEREGION", "AGE", "SEX"])
+dag.get_node("pop_race")["CPD"].array = get_cpd(df, "RACE", ["AGE", "SEX", "STATEREGION"])
 dag.get_node("pop_race")["CPD"].rescale_probabilities()
 
 dag.get_node("pop_sex")["CPD"] = baynet.parameters.ConditionalProbabilityTable(dag.get_node("pop_sex"))
@@ -132,7 +136,7 @@ dag.get_node("pop_sex")["CPD"].array = get_cpd(df, "SEX", ["STATEREGION"])
 dag.get_node("pop_sex")["CPD"].rescale_probabilities()
 
 dag.get_node("pop_age")["CPD"] = baynet.parameters.ConditionalProbabilityTable(dag.get_node("pop_age"))
-dag.get_node("pop_age")["CPD"].array = get_cpd(df, "AGE", ["STATEREGION", "SEX"])
+dag.get_node("pop_age")["CPD"].array = get_cpd(df, "AGE", ["SEX", "STATEREGION"])
 dag.get_node("pop_age")["CPD"].rescale_probabilities()
 
 dag.get_node("region")["CPD"] = baynet.parameters.ConditionalProbabilityTable(dag.get_node("region"))
@@ -160,6 +164,8 @@ fips_ori = pd.read_csv(data_path / "misc" / "LEAIC.tsv", delimiter="\t", usecols
 fips_ori = fips_ori.rename(columns={"ORI9": "ori"})
 
 nibrs_df = pd.merge(nibrs_df, fips_ori, on="ori")
+nibrs_df = pd.merge(nibrs_df, subregion_df, on="FIPS")
+nibrs_df["STATEREGION"] = nibrs_df["State"] + "-" + nibrs_df["Region"]
 
 nibrs_arrests = nibrs_df[nibrs_df.arrest_type != "No Arrest"]
 
@@ -184,10 +190,10 @@ def get_incident_cpt(pop_df, usage_df, inc_df, dem_order):
     cross_mult = cross.multiply(cross.index, axis="rows")
     cross_sum = cross_mult.sum(axis="rows") / 30
     # pop_df = pop_df[pop_df["FIPS"].isin(inc_df.FIPS.unique().tolist())]
-    grouped_incidents = inc_df.groupby(cols + ["FIPS"]).size()
-    expected_incidents = (pop_df.groupby(cols + ["FIPS"])["frequency"].sum() * cross_sum * 365)
+    grouped_incidents = inc_df.groupby(cols + ["STATEREGION"]).size()
+    expected_incidents = (pop_df.groupby(cols + ["STATEREGION"])["frequency"].sum() * cross_sum * 365)
     inc_cpt = grouped_incidents / expected_incidents
-    columns = [f"pop_{dem.lower()}" for dem in dem_order] + ["county"]
+    columns = [f"pop_{dem.lower()}" for dem in dem_order] + ["region"]
     tuples = list(product(*[dag.get_node(col)["levels"] for col in columns]))
     new_index = pd.MultiIndex.from_tuples(tuples, names=columns)
     inc_cpt = inc_cpt[new_index]
@@ -204,7 +210,7 @@ inc_cpt = get_incident_cpt(df, drug_use_df, nibrs_df, cols)
 
 dag.get_node("incident")["CPD"] = baynet.parameters.ConditionalProbabilityTable(dag.get_node("incident"))
 dag.get_node("incident")["CPD"].array = inc_cpt
-dag.get_node("incident")["CPD"].parents = ['uses_cannabis', 'pop_age', 'pop_race', 'pop_sex', 'county']
+dag.get_node("incident")["CPD"].parents = ['uses_cannabis', 'pop_age', 'pop_race', 'pop_sex', 'region']
 dag.get_node("incident")["CPD"].rescale_probabilities()
 
 # %%
@@ -215,17 +221,31 @@ def get_selection_by_vars(bn: DAG, county_name: str, race_level: str):
         array = np.zeros(local_bn.get_node(node)["CPD"].array.shape)
         array[..., idx] = 1
         return array
-    local_bn.get_node("county")["CPD"].array = _set_cpt("county", county_name)
+    local_bn.get_node("region")["CPD"].array = _set_cpt("region", county_name)
     local_bn.get_node("pop_race")["CPD"].array = _set_cpt("pop_race", race_level)
     return collapse_posterior(local_bn, "incident")[1]
 
-def get_ratio_by_vars(bn: DAG, county_name: str):
-    return np.nan_to_num(get_selection_by_vars(bn, county_name, "black") / get_selection_by_vars(bn, county_name, "white"))
+def get_ratio_by_vars(bn: DAG, region_name: str):
+    return get_selection_by_vars(bn, region_name, "black") / get_selection_by_vars(bn, region_name, "white")
 
 
-df["RATIOS"] = df.FIPS.apply(lambda x: get_ratio_by_vars(dag, x))
+df["RATIOS"] = df.STATEREGION.apply(lambda x: get_ratio_by_vars(dag, x))
+
+#TRACE EXTRAS
+
+inc_per_sr = nibrs_df.groupby("STATEREGION").size().reset_index()
+inc_per_sr = inc_per_sr.rename(columns={0: "incidents"})
+
+race_ratio = df.groupby(["STATEREGION", "RACE"]).frequency.sum().reset_index()
+race_ratio = race_ratio.pivot("STATEREGION", columns="RACE").reset_index()
+race_ratio.columns = ["STATEREGION", "black", "white"]
+race_ratio["bwratio"] = race_ratio["black"] / race_ratio["white"]
+
+df = pd.merge(df, inc_per_sr, on="STATEREGION", how="left")
+df = pd.merge(df, race_ratio, on="STATEREGION", how="left")
 
 # %%
+df = df.round({'bwratio': 4, "RATIOS": 4})
 
 import plotly.express as px
 
@@ -236,14 +256,16 @@ with urlopen('https://raw.githubusercontent.com/plotly/datasets/master/geojson-c
 
 fig = px.choropleth(df, geojson=counties, locations='FIPS', color="RATIOS",
                            color_continuous_scale="Viridis",
-                           scope="usa",
-                            range_color=(0, 10),
-                           labels={"RATIOS":'Incident Ratios by Race (Black/White)'}
+                           scope="usa", hover_data = ["incidents", "bwratio"],
+                            range_color=(0, 15),
+                           labels={"RATIOS":'Incident Ratios by Race (Black/White)',
+                           'incidents': "Number of incidents in the subregion",
+                           "bwratio": "ratio of black / white population"}
                           )
 fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
 fig.update_layout(geo=dict(bgcolor= 'rgba(0,0,0,0)'))
-
-fig.write_html("../../choropleths/ratios.html")
+fig.update_traces(marker_line_width=0)
+fig.write_html("../../choropleths/ratios_subregions_rm.html")
 
 # %%
 arrests_cpt =  get_incident_cpt(df, drug_use_df, nibrs_arrests, cols)

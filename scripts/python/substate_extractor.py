@@ -22,7 +22,7 @@ for note in soup.find("div", {"class": "endnotes"}).findAll("p", {"class": "f90"
     if note.find("a"):
         continue
     else:
-        text = note.getText()
+        text = unidecode.unidecode(note.getText())
         search = re.search('referred to as (.+?) is made up of the following', text)
         if search:
             counties = text.split(":")[-1].split(",")
@@ -32,7 +32,7 @@ for note in soup.find("div", {"class": "endnotes"}).findAll("p", {"class": "f90"
                 county = county.strip()
                 if county[-1] == ".":
                     county = county.replace("and ", "").replace(".", "")
-                data.append([current_state, unidecode.unidecode(search.group(1)), county])
+                data.append([current_state, search.group(1).split(":")[0], county])
 
 df = pd.DataFrame(data, columns = ["State", "Region", "County"])
 df = pd.concat([df, pd.read_csv(misc_path / "manual_counties.csv")])
