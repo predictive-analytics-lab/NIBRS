@@ -121,6 +121,14 @@ subregion_df = pd.read_csv(data_path / "misc" / "subregion_counties.csv",
 
 df = pd.merge(df, subregion_df, how='left', on='FIPS')
 
+fips_ori_df = pd.read_csv(data_path / "misc" / "LEAIC.tsv", delimiter="\t",
+                          usecols=["ORI9", "FIPS"], dtype={'FIPS': object})
+
+fips_ori_df = fips_ori_df.rename(columns={"ORI9": "ori"})
+
+df = pd.merge(fips_ori_df, df, on="FIPS")
+
+
 df["STATEREGION"] = df["State"] + "-" + df["Region"]
 df = df.dropna(subset=["STATEREGION"], how="all")
 

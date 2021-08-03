@@ -20,7 +20,7 @@ from itertools import product
 ########## RESOLUTION ##########
 
 # Options: ["state", "region", "county", "agency"]
-geographic_resolution = "state"
+geographic_resolution = "agency"
 
 
 ##### LOAD DATASETS ######
@@ -50,6 +50,7 @@ resolution_dict = {"state": "State",
 data_to_dag_names = {
     "FIPS": "county",
     "STATEREGION": "region",
+    "ori": "agency",
     "State": "state",
     "AGE": "age_pop",
     "RACE": "race_pop",
@@ -97,9 +98,9 @@ def get_incident_cpt(census_df: pd.DataFrame, nsduh_df: pd.DataFrame, nibrs_df: 
     cross_mult = cross.multiply(cross.index, axis="rows")
     cross_sum = cross_mult.sum(axis="rows") / 30
     grouped_incidents = nibrs_df.groupby(
-        sorted(dem_order + [resolution_dict[resolution]])).size()
+        sorted(dem_order + [resolution_dict[resolution]], key=str.casefold)).size()
     expected_incidents = (census_df.groupby(sorted(
-        dem_order + [resolution_dict[resolution]]))["frequency"].sum() * cross_sum * 365)
+        dem_order + [resolution_dict[resolution]], key=str.casefold))["frequency"].sum() * cross_sum * 365)
     inc_cpt = grouped_incidents / expected_incidents
     columns = sorted(
         [f"{dem.lower()}_pop" for dem in dem_order] + [resolution])
@@ -117,7 +118,7 @@ def get_incident_cpt(census_df: pd.DataFrame, nsduh_df: pd.DataFrame, nibrs_df: 
 # Function to create the CPT of NODE given PARENTS
 
 def get_cpd(census_df: pd.DataFrame, dag: DAG, child, parents, norm=True):
-    parents = sorted(parents)
+    parents = sorted(parents, key=str.casefold)
     grouped = census_df.groupby([*parents, child])["frequency"].sum()
     if not norm:
         return grouped
@@ -204,5 +205,22 @@ def get_ratio_by_vars(bn: DAG, resolution: str, resolution_name: str):
     return get_selection_by_vars(bn, "black", resolution, resolution_name) / get_selection_by_vars(bn, "white", resolution, resolution_name)
 
 
-census_df["RATIOS"] = census_df[resolution_dict[geographic_resolution]].apply(
-    lambda x: get_ratio_by_vars(dag, geographic_resolution, x))
+
+
+incident_counts = nibrs_df.groupby(resolution_dict[geographic_resolution]).size().to_frame("incidents").reset_index()
+
+# incident_counts = incident_counts[incident_counts.incidents >= 10]
+
+incident_counts["selection_ratio"] = incident_counts[resolution_dict[geographic_resolution]].apply(lambda x: get_ratio_by_vars(dag, geographic_resolution, x))
+
+incident_counts.to_csv(data_path / "output"/ "agency_output_p.csv")
+
+race_ratio = census_df.groupby([resolution_dict[geographic_resolution], "RACE"]).frequency.sum().reset_index()
+race_ratio = race_ratio.pivot(resolution_dict[geographic_resolution], columns="RACE").reset_index()
+race_ratio.columns = [resolution_dict[geographic_resolution], "black", "white"]
+race_ratio["bwratio"] = race_ratio["black"] / race_ratio["white"]
+
+incident_counts = pd.merge(incident_counts, race_ratio, on=resolution_dict[geographic_resolution], how="left")
+
+
+incident_counts.to_csv(data_path / "output"/ "agency_output.csv")
