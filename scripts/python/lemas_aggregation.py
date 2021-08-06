@@ -101,8 +101,9 @@ lemas_columns = [
 # %%
 
 binary_columns = set(agency_lemas[lemas_columns].columns[[agency_lemas[lemas_columns].nunique() <=5]])
-cont_columns = set(agency_lemas[lemas_columns].columns[[agency_lemas[lemas_columns].nunique() >= 10]])
+cont_columns = set(agency_lemas[lemas_columns].columns[[agency_lemas[lemas_columns].nunique() >= 10]]).union({"bwratio"})
 categorical_columns = set(lemas_columns) - binary_columns - cont_columns
+special_columns = {"incidents", "population", "selection_ratio"}
 # %%
 
 binary_conversion_5 = {
@@ -139,9 +140,7 @@ for col in binary_columns:
 for col in cont_columns:
     agency_lemas[col] = cont_convert(agency_lemas[col])
 
-# %%
 
-categorical_columns
 # %%
 
 issu_addr_dict = {
@@ -183,25 +182,101 @@ agency_lemas["PERS_EDU_MIN"] = agency_lemas["PERS_EDU_MIN"].map(edu_dict.get)
 
 # %%
 
-def binary_aggregation(x: pd.DataFrame, column: str):
+def continuous_aggregation(x: pd.DataFrame, column: str):
     x = x[x[column] > 0]
+    # x = x[~x[column].isna()]
     prop_pop = x.population / x.population.sum()
-    t_val = (x[column] * prop_pop).sum()
-    f_val = 1 - t_val
-    return t_val, f_val
-    
-    
+    return (x[column] * prop_pop).sum()
+
+
+def categorical_aggregation(x: pd.DataFrame, column: str):
+    x = x[x[f"{column}_-1.0"].astype(int) != 1]
+    matching_cols = [col for col in x if col.startswith(column)]
+    # x = x[x[matching_cols].sum(axis=1) > 0]
+    prop_pop = x.population / x.population.sum()
+    return (x[matching_cols].mul(prop_pop.values, axis=0)).sum(axis=0)
+
+def weighted_std(x: pd.DataFrame, column: str):
+    prop_pop = x.population / x.population.sum()
+    average = np.average(x[column], weights=prop_pop)
+    return np.sqrt(np.average((x[column]-average)**2, weights=prop_pop))
 
 
 def aggregate_columns(group: pd.DataFrame):
-    # group = agency_lemas[agency_lemas.index.isin(group)]
-    for col in binary_columns:
-        t_val, f_val = binary_aggregation(group, col)
-        group[col] = t_val
-        group[f"NOT {col}"] = f_val
-    return group
+    output = pd.DataFrame()
+    for col in cont_columns:
+        output[col] = [continuous_aggregation(group, col)]
+    for col in categorical_columns.union(binary_columns):
+        cat_output = categorical_aggregation(group, col)
+        output = pd.concat([output, pd.DataFrame([cat_output])], axis=1)
+    for col in special_columns:
+        if col == "incidents":
+            output[col] = group[col].sum()
+        if col == "population":
+            output["population_covered"] = group[col].sum()
+        if col == "selection_ratio":
+            output[col] = continuous_aggregation(group, col)
+            output["selection ratio std"] = weighted_std(group, col)
+    return output
+
+
+# %%
+from functools import partial
+
+
+def waverage(x: pd.DataFrame, column: str, weighting_column: str):
+    weight = x[weighting_column] / x[weighting_column].sum()
+    return (x[column] * weight).sum()
+    
+def wstd(x: pd.DataFrame, column: str, weighting_column: str):
+    weight = x[weighting_column] / x[weighting_column].sum()
+    average = np.average(x[column], weights=weight)
+    return np.sqrt(np.average((x[column]-average)**2, weights=weight))
+
+def selection_aggregation(group: pd.DataFrame):
+    output = pd.DataFrame()
+    output["nibrs_selection_pop"] = [waverage(group, column="selection_ratio", weighting_column="population")]
+    output["nibrs_selection_inc"] = [waverage(group, column="selection_ratio", weighting_column="incidents")]
+    output["nibrs_selection_pop_std"] = [wstd(group, column="selection_ratio", weighting_column="population")]
+    output["nibrs_selection_inc_std"] = [wstd(group, column="selection_ratio", weighting_column="incidents")]
+    return output
+
+def agency_resolution(resolution: str):
+    agency_lemas_filtered = agency_lemas[agency_lemas.incidents > 0]
+    nibrs_incidents = agency_lemas_filtered.groupby(resolution)["incidents"].sum().to_frame("nibrs_incidents").reset_index()
+    
+    nibrs_selection_pop = agency_lemas_filtered.groupby(resolution).apply(selection_aggregation)
+        
+    agency_lemas_filtered = agency_lemas_filtered[agency_lemas_filtered["PERS_EDU_MIN"].notna()]
+    agency_lemas_1hot = pd.get_dummies(agency_lemas_filtered, columns=list(categorical_columns.union(binary_columns)))
+    agency_lemas_1hot = agency_lemas_1hot.groupby(resolution).apply(aggregate_columns)
+    columns_to_drop = [column for column in agency_lemas_1hot.columns if column.endswith("-1.0")]
+    agency_lemas_1hot = agency_lemas_1hot.drop(columns_to_drop, axis=1)
+    agency_lemas_1hot["population_covered_proportion"] = (agency_lemas_1hot.groupby(resolution)["population_covered"].sum() / agency_lemas.groupby(resolution)["population"].sum()).dropna().values
+    agency_lemas_1hot = agency_lemas_1hot.reset_index().drop(["level_1"], axis=1)
+    agency_lemas_1hot = pd.merge(agency_lemas_1hot, nibrs_incidents, on=resolution)
+    
+    agency_lemas_1hot = pd.merge(agency_lemas_1hot, nibrs_selection_pop, on=resolution)
+
+    agency_lemas_1hot.to_csv(data_path / "output" / f"aggregated_lemas_{resolution}.csv")
+
 # %%
 
-test = agency_lemas.groupby("state_name").apply(aggregate_columns)
+agency_resolution("State")
+# agency_resolution("state_region")
+# agency_resolution("FIPS")
+
 
 # %%
+
+# Coverage Percentage - DONE
+# Drop missing stuff - DONE
+# Create map(s) with STD
+# Generate report
+
+
+# NIBRS MAP - BIAS (+ STD), NIBRS Coverage
+
+
+# Selection ratio weighted by Incidents
+# Selection ratio without dropping lemas

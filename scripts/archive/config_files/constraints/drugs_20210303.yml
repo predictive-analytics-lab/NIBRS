@@ -1,8 +1,0 @@
-group_demographics: &D
-  - dm_*
-​
-allowed_edges:
-  - {from: *D, to: *D}
-​
-output_nodes:
-  - arrest_type

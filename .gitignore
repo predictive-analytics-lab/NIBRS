@@ -94,3 +94,4 @@ venv.bak/
 .mypy_cache/
 /data
 /choropleths
+/reports
