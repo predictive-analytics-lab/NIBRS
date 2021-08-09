@@ -24,9 +24,11 @@ All of this presumes you already have postgres and python setup on your machine.
 
 To download the existing datasets, reports, and maps, you must install DVC:
 
-`pip install dvc[gdrive]`
+`pip install dvc[gs]`
 
-As the DVC remote is stored on Bradley's google drive, the only way to gain access is via Bradley. Please contact him for authentication.
+Followed by:
+
+`dvc pull`
 
 
 #### Python Scripts
