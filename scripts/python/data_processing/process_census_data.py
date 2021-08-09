@@ -1,30 +1,55 @@
+"""
+Script which injests county level census information,
+reconfigures the age boundaries, and adds FIPS + state sub-region information.
+
+Important: races aren't in combination with mixed.
+e.g. WA_MALE (white male) is JUST white males. Does not include white mixed males.
+"""
+import argparse
+import functools
+
 from pathlib import Path
 from matplotlib import pyplot as plt
 import pandas as pd
+import numpy as np
+
 
 data_path = Path(__file__).parent.parent.parent.parent / "data"
 
 
-df = pd.read_csv(data_path / "demographics" / "census-2019-county.csv", encoding="ISO-8859-1", engine='python', usecols=[
-                 "AGEGRP", "COUNTY", "STATE", "WA_MALE", "WA_FEMALE", "BA_MALE", "BA_FEMALE", "YEAR"], dtype={'STATE': object, "COUNTY": object})  # RACES NOT IN COMBINATION
-df = df[df["YEAR"] == 12]
-df = pd.melt(df, id_vars=["AGEGRP", "COUNTY", "STATE"], value_vars=[
-             "WA_MALE", "WA_FEMALE", "BA_MALE", "BA_FEMALE"], var_name="RACESEX", value_name="frequency")
+############ RECODING FUNCTIONS ##############
 
-
-def RACE(x):
+def RACE(x: pd.Series):
+    """
+    Function which injests a row of a census dataframe and
+    changes the converts from the RACESEX config -> RACE.
+    
+    :param x: a row of the census dataframe
+    """
     if x["RACESEX"] == "WA_MALE" or x["RACESEX"] == "WA_FEMALE":
         return "White"
     return "Black"
 
 
-def SEX(x):
+def SEX(x: pd.Series):
+    """
+    Function which injests a row of a census dataframe and
+    changes the converts from the RACESEX config -> SEX.
+    
+    :param x: a row of the census dataframe
+    """
     if x["RACESEX"] == "WA_MALE" or x["RACESEX"] == "BA_MALE":
         return "Male"
     return "Female"
 
 
-def AGE(x):
+def AGE(x: pd.Series):
+    """
+    Function which injests a row of a census dataframe and
+    changes the converts the age group format to string format.
+    
+    :param x: a row of the census dataframe
+    """
     if x == 1:
         return "0-4"
     if x == 2:
@@ -64,74 +89,129 @@ def AGE(x):
     return "total"
 
 
-df["SEX"] = df.apply(SEX, axis=1)
-df["RACE"] = df.apply(RACE, axis=1)
-df["AGE"] = df["AGEGRP"].map(AGE)
-df["FIPS"] = df["STATE"] + df["COUNTY"]
+def disjunction(*conditions):
+    """
+    Function which takes a list of conditions and returns the logical OR of them.
+    """
+    return functools.reduce(np.logical_or, conditions)
 
-df = df[df.AGE != "total"]
+def load_and_process_census_data(years: str) -> pd.DataFrame:
+    """
+    Function which takes a list of years and returns a dataframe of the census data of the given years.
+    
+    In particular, it takes the following steps:
+     - Reads in the data from the census data file
+     - Recodes the RACESEX and AGE columns
+     - Adds FIPS and state sub-region columns
+    """
 
-df = df.drop(["AGEGRP", "RACESEX"], axis=1)
-
-df = pd.read_csv(data_path / "demographics" /
-                 "counties_processed.csv", dtype={'FIPS': object}, index_col=0)
-
-df.frequency /= 4
-
-
-def age_lowerbound(x):
-    return int(x["AGE"].split("-")[0].split("+")[0])
-
-
-df.AGE = df.apply(age_lowerbound, axis=1)
-
-df_2 = df.copy(deep=True)
-df_3 = df.copy(deep=True)
-df_4 = df.copy(deep=True)
-
-df_2.AGE += 1
-df_3.AGE += 2
-df_4.AGE += 3
-
-df = pd.concat([df, df_2, df_3, df_4])
+    if "-" in years:
+        years = years.split("-")
+        years = range(int(years[0]), int(years[1]) + 1)
+        try:
+            years = [12 - (2019 - int(yi)) for yi in years]
+        except:
+            print("invalid year format.")
+    else:
+        try:
+            years = [12 - (2019 - int(years))]
+        except:
+            print("invalid year format.")
 
 
-def age_agg(x):
-    if x["AGE"] < 12:
-        return "drop"
-    if x["AGE"] < 18:
-        return "12-17"
-    if x["AGE"] < 26:
-        return "18-25"
-    if x["AGE"] < 35:
-        return "26-34"
-    if x["AGE"] < 50:
-        return "35-49"
-    return "50+"
+    #LOAD DATA
+    df = pd.read_csv(data_path / "census" / f"census-2019-county.csv", encoding="ISO-8859-1", engine='python', usecols=[
+                    "AGEGRP", "COUNTY", "STATE", "WA_MALE", "WA_FEMALE", "BA_MALE", "BA_FEMALE", "YEAR"], dtype={'STATE': object, "COUNTY": object})  # RACES NOT IN COMBINATION
+
+    # FILTER YEARS
+    df = df[disjunction(*[df.YEAR == yi for yi in years])]
 
 
-df["AGE"] = df.apply(age_agg, axis=1)
-df = df[df["AGE"] != "drop"]
-df = df.groupby(["AGE", "SEX", "RACE", "FIPS"]).sum().reset_index()
-df = df.drop(["COUNTY", "STATE"], axis=1)
+    df = pd.melt(df, id_vars=["AGEGRP", "COUNTY", "STATE", "YEAR"], value_vars=[
+                "WA_MALE", "WA_FEMALE", "BA_MALE", "BA_FEMALE"], var_name="RACESEX", value_name="frequency")
 
-subregion_df = pd.read_csv(data_path / "misc" / "subregion_counties.csv",
-                           dtype={'FIPS': object}, usecols=["State", "Region", "FIPS"])
+    df["SEX"] = df.apply(SEX, axis=1)
+    df["RACE"] = df.apply(RACE, axis=1)
+    df["AGE"] = df["AGEGRP"].map(AGE)
+    df["FIPS"] = df["STATE"] + df["COUNTY"]
+    df["YEAR"] += 2007 # Not quite sure why 2007 is the magic number.. but ¯\_(ツ)_/¯
 
-df = pd.merge(df, subregion_df, how='left', on='FIPS')
+    df = df[df.AGE != "total"]
 
-fips_ori_df = pd.read_csv(data_path / "misc" / "LEAIC.tsv", delimiter="\t",
-                          usecols=["ORI9", "FIPS"], dtype={'FIPS': object})
+    df = df.drop(["AGEGRP", "RACESEX"], axis=1)
 
-fips_ori_df = fips_ori_df.rename(columns={"ORI9": "ori"})
+    df.frequency /= 4
 
-df = pd.merge(fips_ori_df, df, on="FIPS")
+    def age_lowerbound(x):
+        return int(x["AGE"].split("-")[0].split("+")[0])
+
+    df.AGE = df.apply(age_lowerbound, axis=1)
+
+    df_2 = df.copy(deep=True)
+    df_3 = df.copy(deep=True)
+    df_4 = df.copy(deep=True)
+
+    df_2.AGE += 1
+    df_3.AGE += 2
+    df_4.AGE += 3
+
+    df = pd.concat([df, df_2, df_3, df_4])
+
+    def age_agg(x):
+        if x["AGE"] < 12:
+            return "drop"
+        if x["AGE"] < 18:
+            return "12-17"
+        if x["AGE"] < 26:
+            return "18-25"
+        if x["AGE"] < 35:
+            return "26-34"
+        if x["AGE"] < 50:
+            return "35-49"
+        return "50+"
+
+    df["AGE"] = df.apply(age_agg, axis=1)
+    df = df[df["AGE"] != "drop"]
+
+    df = df.groupby(["AGE", "SEX", "RACE", "FIPS", "YEAR"]).sum().reset_index()
+
+    subregion_df = pd.read_csv(data_path / "misc" / "subregion_counties.csv",
+                            dtype={'FIPS': object}, usecols=["State", "Region", "FIPS"])
+
+    df = pd.merge(df, subregion_df, how='left', on='FIPS')
+
+    fips_ori_df = pd.read_csv(data_path / "misc" / "LEAIC.tsv", delimiter="\t",
+                            usecols=["ORI9", "FIPS"], dtype={'FIPS': object})
+
+    fips_ori_df = fips_ori_df.rename(columns={"ORI9": "ori"})
+
+    df = pd.merge(fips_ori_df, df, on="FIPS")
 
 
-df["STATEREGION"] = df["State"] + "-" + df["Region"]
-df = df.dropna(subset=["STATEREGION"], how="all")
+    df["state_region"] = df["State"] + "-" + df["Region"]
+    df = df.dropna(subset=["state_region"], how="all")
 
-df["SEX"] = df.SEX.apply(lambda x: x.lower())
-df["RACE"] = df.RACE.apply(lambda x: x.lower())
+    df["SEX"] = df.SEX.apply(lambda x: x.lower())
+    df["RACE"] = df.RACE.apply(lambda x: x.lower())
 
-df.to_csv(data_path / "demographics" / "county_census.csv")
+    # Clean up
+    df.rename(columns={"AGE":"age", "SEX":"sex", "RACE":"race", "YEAR": "year", "State":"state"}, inplace=True)
+    df.drop(["Region"], axis=1, inplace=True)
+
+    return df
+
+
+if __name__ == "__main__":
+    parser=argparse.ArgumentParser()
+
+    parser.add_argument("--year", help="year, or year range.")
+
+    args=parser.parse_args()
+
+    if not args.year:
+        print("No year specified. Defaulting to 2019")
+        df = load_and_process_census_data("2019")
+    else:
+        df = load_and_process_census_data(args.year)
+    year = args.year if args.year else "2019"
+    df.to_csv(data_path / "census" / f"census_processed_{year}.csv")

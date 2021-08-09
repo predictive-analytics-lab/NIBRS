@@ -52,7 +52,7 @@ select
 		else '4+'
 	end as offender_count,
 	inc_counts.location_category,
-	case 
+	case
 		when prop.drug_equipment_value = 0 then '0'
 		when prop.drug_equipment_value < 100 then '1-100'
 		when prop.drug_equipment_value < 1000 then '101-1000'
@@ -81,7 +81,7 @@ left join (
 INNER JOIN (
 	SELECT
 		o.incident_id,
-		max(case 
+		max(case
 			when o.offense_type_id = 16 then 1
 			else 0
 		end) as drug_offense,

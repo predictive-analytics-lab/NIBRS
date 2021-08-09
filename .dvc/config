@@ -1,4 +1,4 @@
 [core]
-    remote = gdrive
-['remote "gdrive"']
-    url = gdrive://1S5tlLSANu9O2uxhzhqqsvJU8WAonS3oP
+    remote = cloud
+['remote "cloud"']
+    url = gs://nibrs_dvc/dvc

@@ -5,7 +5,8 @@ CANNABIS-RELATED incidents at a given GEOGRAPHIC RESOLUTION.
 
 ########## IMPORTS ############
 
-from typing import List
+import argparse
+from typing import List, Tuple
 from typing_extensions import Literal
 import numpy as np
 import pandas as pd
@@ -15,30 +16,15 @@ from baynet.interventions import collapse_posterior
 import seaborn as sns
 from pathlib import Path
 from itertools import product
-
-
-########## GEOGRAPHIC RESOLUTION ##########
-
-# Options: ["state", "region", "county", "agency"]
-geographic_resolution = "county"
-
+import subprocess
 
 ##### LOAD DATASETS ######
 
-data_path = Path(__file__).parent.parent.parent.parent / "data"
+base_path = Path(__file__).parent.parent.parent.parent
 
-# This is the county level census data. See "process_census_data.py".
-# FIPS code is loaded in as an 'object' to avoid integer conversion.
-census_df = pd.read_csv(data_path / "demographics" /
-                        "county_census.csv", dtype={'FIPS': object})
+data_processing_path = base_path / "scripts" / "python" / "data_processing"
 
-
-# This is the procsssed NSDUH dataset. See "process_nsduh_data.py".
-nsduh_df = pd.read_csv(data_path / "NSDUH" / "processed_cannabis_usage.csv")
-
-# This is the processed NIBRS dataset. See "process_nibrs_data.py".
-nibrs_df = pd.read_csv(data_path / "NIBRS" / "cannabis_processed.csv", dtype={'FIPS': object})
-
+data_path = base_path / "data"
 
 # Function to create dag and initialize levels dependent on desired geographic resolution.
 
@@ -76,7 +62,7 @@ def create_dag(drug_use_df: pd.DataFrame, census_df: pd.DataFrame, resolution: L
 # Function to create cannabis usage cpt.
 
 
-def get_usage_cpt(drug_use_df: pd.DataFrame, usage_name: str):
+def get_usage_cpt(dag: DAG, drug_use_df: pd.DataFrame, usage_name: str):
     cross = pd.crosstab(drug_use_df[usage_name], [
                         drug_use_df.AGE, drug_use_df.RACE, drug_use_df.SEX], normalize="columns")
     cross_mult = cross.multiply(cross.index, axis="rows")
@@ -156,32 +142,35 @@ def populate_cpd(dag: DAG, node: str, cpt: np.ndarray):
 
 # Create DAG structure and Initialize levels.
 
+def create_bn(nsduh_df: pd.DataFrame, nibrs_df: pd.DataFrame, census_df: pd.DataFrame, geographic_resolution: str) -> DAG:
 
-dag = create_dag(nsduh_df, census_df, resolution=geographic_resolution)
+    dag = create_dag(nsduh_df, census_df, resolution=geographic_resolution)
 
-# Populate Cannabis Usage CPT
+    # Populate Cannabis Usage CPT
 
-populate_cpd(dag, "uses_cannabis", get_usage_cpt(nsduh_df, "MJDAY30A"))
+    populate_cpd(dag, "uses_cannabis", get_usage_cpt(dag, nsduh_df, "MJDAY30A"))
 
-# Populate demographic CPTs.
+    # Populate demographic CPTs.
 
-populate_cpd(dag, "race_pop", get_cpd(census_df, dag,
-             "RACE", ["AGE", "SEX", resolution_dict[geographic_resolution]]))
+    populate_cpd(dag, "race_pop", get_cpd(census_df, dag,
+                "RACE", ["AGE", "SEX", resolution_dict[geographic_resolution]]))
 
 
-populate_cpd(dag, "sex_pop", get_cpd(census_df, dag,
-             "SEX", [resolution_dict[geographic_resolution]]))
+    populate_cpd(dag, "sex_pop", get_cpd(census_df, dag,
+                "SEX", [resolution_dict[geographic_resolution]]))
 
-populate_cpd(dag, "age_pop", get_cpd(census_df, dag,
-             "AGE", ["SEX", resolution_dict[geographic_resolution]]))
+    populate_cpd(dag, "age_pop", get_cpd(census_df, dag,
+                "AGE", ["SEX", resolution_dict[geographic_resolution]]))
 
-populate_cpd(dag, geographic_resolution, get_cpd(census_df, dag,
-             resolution_dict[geographic_resolution], []))
+    populate_cpd(dag, geographic_resolution, get_cpd(census_df, dag,
+                resolution_dict[geographic_resolution], []))
 
-# Populate Incident CPT
+    # Populate Incident CPT
 
-populate_cpd(dag, "incident", get_incident_cpt(census_df, nsduh_df,
-             nibrs_df, dag, geographic_resolution))
+    populate_cpd(dag, "incident", get_incident_cpt(census_df, nsduh_df,
+                nibrs_df, dag, geographic_resolution))
+    
+    return dag
 
 
 ###### Conditioning #######
@@ -205,21 +194,65 @@ def get_ratio_by_vars(bn: DAG, resolution: str, resolution_name: str):
     return get_selection_by_vars(bn, "black", resolution, resolution_name) / get_selection_by_vars(bn, "white", resolution, resolution_name)
 
 
+def get_selection_ratio(dag: DAG, nibrs_df: pd.DataFrame, geographic_resolution: str, min_incidents: int = 0) -> pd.DataFrame:
 
-incident_counts = nibrs_df.groupby(resolution_dict[geographic_resolution]).size().to_frame("incidents").reset_index()
+    incident_counts = nibrs_df.groupby(resolution_dict[geographic_resolution]).size().to_frame("incidents").reset_index()
 
-# incident_counts = incident_counts[incident_counts.incidents >= 10]
+    incident_counts = incident_counts[incident_counts.incidents >= min_incidents]
 
-incident_counts["selection_ratio"] = incident_counts[resolution_dict[geographic_resolution]].apply(lambda x: get_ratio_by_vars(dag, geographic_resolution, x))
+    incident_counts["selection_ratio"] = incident_counts[resolution_dict[geographic_resolution]].apply(lambda x: get_ratio_by_vars(dag, geographic_resolution, x))
 
-incident_counts.to_csv(data_path / "output"/ "agency_output_p.csv")
+    return incident_counts
 
-race_ratio = census_df.groupby([resolution_dict[geographic_resolution], "RACE"]).frequency.sum().reset_index()
-race_ratio = race_ratio.pivot(resolution_dict[geographic_resolution], columns="RACE").reset_index()
-race_ratio.columns = [resolution_dict[geographic_resolution], "black", "white"]
-race_ratio["bwratio"] = race_ratio["black"] / race_ratio["white"]
+def add_race_ratio(census_df: pd.DataFrame, incident_df: pd.DataFrame, geographic_resolution: str):
 
-incident_counts = pd.merge(incident_counts, race_ratio, on=resolution_dict[geographic_resolution], how="left")
+    race_ratio = census_df.groupby([resolution_dict[geographic_resolution], "RACE"]).frequency.sum().reset_index()
+    race_ratio = race_ratio.pivot(resolution_dict[geographic_resolution], columns="RACE").reset_index()
+    race_ratio.columns = [resolution_dict[geographic_resolution], "black", "white"]
+    race_ratio["bwratio"] = race_ratio["black"] / race_ratio["white"]
+
+    incident_df = pd.merge(incident_df, race_ratio, on=resolution_dict[geographic_resolution], how="left")
+
+    return incident_df
+
+############ DATASET LOADING #############
+
+def load_datasets(years: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    # This is the county level census data. See "process_census_data.py".
+    # FIPS code is loaded in as an 'object' to avoid integer conversion.
+    if (data_path / "census" / f"census_processed_{years}.csv").exists():
+        census_df = pd.read_csv(data_path / "census" / f"census_processed_{years}.csv", dtype={'FIPS': object})
+    else:
+        subprocess.Popen(["python", str((data_processing_path / "process_census_data.py").resolve()), "--year", years])
+        census_df = pd.read_csv(data_path / "census" / f"census_processed_{years}.csv", dtype={'FIPS': object})
+
+    if (data_path / "NSDUH" / f"nsduh_processed_{years}.csv").exists():
+        nsduh_df = pd.read_csv(data_path / "NSDUH" / f"nsduh_processed_{years}.csv")
+    else:
+        subprocess.Popen(["python", str((data_processing_path / "process_nsduh_data.py").resolve()), "--year", years])
+        nsduh_df = pd.read_csv(data_path / "NSDUH" / f"nsduh_processed_{years}.csv")
+
+    if (data_path / "NIBRS" / f"nibrs_processed_{years}.csv").exists():
+        nibrs_df = pd.read_csv(data_path / "NIBRS" / f"incidents_processed_{years}.csv", dtype={'FIPS': object})
+    else:
+        subprocess.Popen(["python", str((data_processing_path / "process_nibrs_data.py").resolve()), "--year", years])
+        nibrs_df = pd.read_csv(data_path / "NIBRS" / f"nibrs_processed_{years}.csv")
+    return census_df, nsduh_df, nibrs_df
 
 
-incident_counts.to_csv(data_path / "output"/ f"agency_output_{resolution_dict[geographic_resolution]}.csv")
+if __name__ == "__main__":
+    parser=argparse.ArgumentParser()
+
+    parser.add_argument("--year", help="year, or year range.", default="2019")
+    parser.add_argument("--resolution", help="The geographic resolution", default="state")
+    parser.add_argument("--min_incidents", help="Minimum number of incidents to be included in the selection bias df.", default=0)
+
+    args=parser.parse_args()
+
+    census_df, nsduh_df, nibrs_df = load_datasets(args.year)
+    bn = create_bn(nsduh_df, nibrs_df, census_df, args.resolution)
+
+    selection_bias_df = get_selection_ratio(bn, nibrs_df, args.resolution, args.min_incidents)
+    selection_bias_df = add_race_ratio(census_df, selection_bias_df, args.resolution)
+
+    selection_bias_df.to_csv(data_path / "output" / f"selection_ratio_{args.year}")

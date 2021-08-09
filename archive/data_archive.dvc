@@ -1,0 +1,5 @@
+outs:
+- md5: fc12d2780b67b22ed6b2771254b2855e.dir
+  size: 236385288
+  nfiles: 53
+  path: data_archive

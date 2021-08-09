@@ -34,4 +34,3 @@ As the DVC remote is stored on Bradley's google drive, the only way to gain acce
 There is no intensive setup required for the python scripts, standard libraries are used. Simply pip install them as required.
 
 A list of these with a frozen anaconda environment / requirements.txt will be made available shortly.
-
