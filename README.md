@@ -5,7 +5,7 @@ The project document can be found here: https://www.overleaf.com/read/mgnmfzvkyq
 There are two main sections of this repository:
 
     - The SQL queries which operate on the NIBRS database.
-    - The Python code which utilizies this extracted data.
+    - The Python code which utilizes this extracted data.
 
 ## Installation
 
@@ -49,7 +49,7 @@ pointing to the `requirements.txt` file in the NIBRS directory.
 
 ### NIBRS Postgres DB Scripts
 
-It is reccomended you use some form of PSQL GUI, it makes running the scripts and investigating the output easier.
+It is recommended you use some form of PSQL GUI, it makes running the scripts and investigating the output easier.
 
 Please refer to: https://retool.com/blog/best-postgresql-guis-in-2020/ for a brief list of options.
 
