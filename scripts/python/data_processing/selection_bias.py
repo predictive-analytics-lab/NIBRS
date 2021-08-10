@@ -30,17 +30,17 @@ data_path = base_path / "data"
 
 # Dictionaries that converts between names of nodes and their data column names:
 
-resolution_dict = {"state": "State",
-                   "region": "STATEREGION", "county": "FIPS", "agency":  "ori"}
+resolution_dict = {"state": "state",
+                   "region": "state_region", "county": "FIPS", "agency":  "ori"}
 
 data_to_dag_names = {
     "FIPS": "county",
-    "STATEREGION": "region",
+    "state_region": "region",
     "ori": "agency",
-    "State": "state",
-    "AGE": "age_pop",
-    "RACE": "race_pop",
-    "SEX": "sex_pop",
+    "state": "state",
+    "age": "age_pop",
+    "race": "race_pop",
+    "sex": "sex_pop",
 }
 
 

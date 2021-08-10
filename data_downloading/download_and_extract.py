@@ -60,7 +60,7 @@ state_abbreviations = [s.split(",")[1].strip() for s in """Alabama, AL
 
 
 def download_data():
-    years = [2019]
+    years = [2015, 2016, 2017, 2018, 2019]
     states = state_abbreviations
     download_location = Path(__file__).parent / 'downloads'
     for year in years:
