@@ -1,3 +1,5 @@
+"""Script which uses the pandas-profiling library to create a HTML report of a given dataset."""
+
 import pandas as pd
 from pandas_profiling import ProfileReport
 from pathlib import Path

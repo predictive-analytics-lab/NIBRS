@@ -1,3 +1,5 @@
+"""This script scrapes the NSDUH sub-regions and connects them with counties."""
+
 import numpy as np
 from Levenshtein import jaro_winkler
 from bs4 import BeautifulSoup

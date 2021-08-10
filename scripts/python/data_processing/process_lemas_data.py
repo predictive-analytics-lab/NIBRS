@@ -1,12 +1,25 @@
-"""This script loads and processes the LEMAS dataset."""
-# %%
+"""
+This script loads and processes the LEMAS dataset.
+
+NOTE: The data is from 2016.
+
+Specifically:
+
+1. Loads the raw LEMAS dataset.
+2. Filters columns to those we're interested in.
+3. Connects with FIPS codes for county level location.
+4. Connect with agency participation information to include population coverage, nibrs participation, etc.
+
+"""
+
 import pandas as pd
 
 from pathlib import Path
 
 data_dir = Path(__file__).parent.parent.parent.parent / "data"
 
-# %%
+######### COLUMNS TO INCLUDE ##########
+
 
 ap_cols = [
     "ori",
@@ -19,18 +32,7 @@ ap_cols = [
     "female_officer",
     "data_year"
 ]
-ap_df = pd.read_csv(data_dir / "misc" / "agency_participation.csv", usecols=ap_cols)
 
-ap_df = ap_df[ap_df.data_year == 2019]
-
-fips_ori_df = pd.read_csv(data_dir / "misc" / "LEAIC.tsv", delimiter="\t",
-                          usecols=["ORI9", "FIPS"], dtype={'FIPS': object})
-
-fips_ori_df = fips_ori_df.rename(columns={"ORI9": "ori"})
-
-ap_df = pd.merge(ap_df, fips_ori_df, on="ori")
-
-# %%
 
 lemas_columns = [
     "ISSU_ADDR_BIAS",
@@ -125,13 +127,21 @@ lemas_columns = [
     "ORI9"
 ]
 
-lemas_df = pd.read_csv(data_dir / "agency" / "lemas_2016.tsv", sep='\t', usecols=lemas_columns)
-# %%
-lemas_df = lemas_df.rename(columns={"ORI9": "ori"})
+####### DATA LOADING ###########
+
+def load_lemas_data() -> pd.DataFrame:
+    ap_df = pd.read_csv(data_dir / "misc" / "agency_participation.csv", usecols=ap_cols)
+    ap_df = ap_df[ap_df.data_year == 2019]
+    fips_ori_df = pd.read_csv(data_dir / "misc" / "LEAIC.tsv", delimiter="\t",
+                            usecols=["ORI9", "FIPS"], dtype={'FIPS': object})
+    fips_ori_df = fips_ori_df.rename(columns={"ORI9": "ori"})
+    ap_df = pd.merge(ap_df, fips_ori_df, on="ori")
+    lemas_df = pd.read_csv(data_dir / "agency" / "lemas_2016.tsv", sep='\t', usecols=lemas_columns)
+    lemas_df = lemas_df.rename(columns={"ORI9": "ori"})
+    lemas_df = pd.merge(ap_df, lemas_df, on="ori", how="left")
+    return lemas_df
 
 
-lemas_df = pd.merge(ap_df, lemas_df, on="ori", how="left")
-# %%
-
-lemas_df.to_csv(data_dir / "agency" / "lemas_processed.csv")
-# %%
+if __name__ == "__main__":
+    lemas_df = load_lemas_data()
+    lemas_df.to_csv(data_dir / "agency" / "lemas_data.csv", index=False)

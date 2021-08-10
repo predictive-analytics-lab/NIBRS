@@ -248,11 +248,25 @@ if __name__ == "__main__":
     parser.add_argument("--min_incidents", help="Minimum number of incidents to be included in the selection bias df.", default=0)
 
     args=parser.parse_args()
+    
+    if "-" in args.year:
+        years = args.year.split("-")
+        years = range(int(years[0]), int(years[1]) + 1)
 
-    census_df, nsduh_df, nibrs_df = load_datasets(args.year)
-    bn = create_bn(nsduh_df, nibrs_df, census_df, args.resolution)
+    else:
+        years = [int(args.year)]
+    
+    selection_bias_df = None
+    
+    for year in years:
+        census_df, nsduh_df, nibrs_df = load_datasets(args.year)
+        bn = create_bn(nsduh_df, nibrs_df, census_df, args.resolution)
+        temp_df = get_selection_ratio(bn, nibrs_df, args.resolution, args.min_incidents)
+        temp_df = add_race_ratio(census_df, selection_bias_df, args.resolution)
+        temp_df["year"] = year
+        if selection_bias_df:
+            selection_bias_df = selection_bias_df.append(temp_df.copy())
+        else:
+            selection_bias_df = temp_df.copy()
 
-    selection_bias_df = get_selection_ratio(bn, nibrs_df, args.resolution, args.min_incidents)
-    selection_bias_df = add_race_ratio(census_df, selection_bias_df, args.resolution)
-
-    selection_bias_df.to_csv(data_path / "output" / f"selection_ratio_{args.year}")
+    selection_bias_df.to_csv(data_path / "output" / f"selection_ratio_{args.year}.csv")
