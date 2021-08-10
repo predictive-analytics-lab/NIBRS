@@ -4,8 +4,8 @@ The project document can be found here: https://www.overleaf.com/read/mgnmfzvkyq
 
 There are two main sections of this repository:
 
-    - The SQL queries which operate on the NIBRS database.
-    - The Python code which utilizes this extracted data.
+- The SQL queries which operate on the NIBRS database.
+- The Python code which utilizes this extracted data.
 
 ## Installation
 
@@ -67,6 +67,8 @@ To create this data for yourself, simply run, for example:
 
 The year range currently available is 2015-2019.
 The geographic resolutions available are: agency, county, region, state.
+
+The file will be output in the `/data/output/` folder with the file name: `selection_ratio_{years}.csv`.
 
 Enter:
 
