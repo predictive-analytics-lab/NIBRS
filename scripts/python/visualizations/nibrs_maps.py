@@ -55,6 +55,8 @@ fig = px.choropleth(fips_incident_count, geojson=counties, locations='FIPS', col
                            scope="usa",
                            labels={"IncidentPer100K":'Incidents Per 100K'}
                           )
+
+fig['layout']['geo']['subunitcolor']='rgba(0,0,0,0)'
 fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
 fig.update_layout(geo=dict(bgcolor= 'rgba(0,0,0,0)'))
 

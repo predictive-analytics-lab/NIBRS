@@ -1,6 +1,12 @@
 import argparse
 from pathlib import Path
 
+def get_year(path: Path) -> str:
+    if "-" in path.name:
+        return path.name.split("-")[-1]
+    else:
+        return path.parent.name.split("-")[-1]
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -11,23 +17,29 @@ def main():
     commands = []
 
     db_name = args.db_name
+    
 
-    commands.append(f"createdb {db_name}")
 
     dl_path = (Path(__file__).parent / 'downloads').resolve()
+    
+    years = list({get_year(data_dir) for data_dir in dl_path.iterdir()})
+    
+    for year in years:
+        commands.append(f"createdb {db_name}_{year}")
+
     for data_dir in dl_path.iterdir():
         if next(data_dir.iterdir()).is_dir(): # Sometimes /STATE-YEAR/ containts /STATE/
             data_dir = next(data_dir.iterdir())
         if (data_dir / 'postgres_setup.sql').is_file():
             commands.append(f"cd {data_dir.resolve()}")
-            commands.append(f"psql {db_name} < postgres_setup.sql")
+            commands.append(f"psql {db_name}_{get_year(data_dir)} < postgres_setup.sql")
             break
     for data_dir in dl_path.iterdir():
         if next(data_dir.iterdir()).is_dir(): # Sometimes /STATE-YEAR/ containts /STATE/
             data_dir = next(data_dir.iterdir())
         if (data_dir / 'postgres_load.sql').is_file():
             commands.append(f"cd {data_dir.resolve()}")
-            commands.append(f"psql {db_name} < postgres_load.sql")
+            commands.append(f"psql {db_name}_{get_year(data_dir)} < postgres_load.sql")
         else:
             print(f"{str(data_dir / 'postgres_load.sql')} missing")
 

@@ -31,11 +31,11 @@ data_path = base_path / "data"
 # Dictionaries that converts between names of nodes and their data column names:
 
 resolution_dict = {"state": "state",
-                   "region": "state_region", "county": "FIPS", "agency":  "ori"}
+                   "state_region": "state_region", "county": "FIPS", "agency":  "ori"}
 
 data_to_dag_names = {
     "FIPS": "county",
-    "state_region": "region",
+    "state_region": "state_region",
     "ori": "agency",
     "state": "state",
     "age": "age_pop",
@@ -46,12 +46,12 @@ data_to_dag_names = {
 
 ############ HELPER FUNCTIONS #########
 
-def create_dag(drug_use_df: pd.DataFrame, census_df: pd.DataFrame, resolution: Literal['state', 'region', 'county']):
+def create_dag(drug_use_df: pd.DataFrame, census_df: pd.DataFrame, resolution: Literal['state', 'state_region', 'county']):
     dag = DAG.from_modelstring(
         f"[incident|age_pop:race_pop:sex_pop:{resolution}:uses_cannabis][uses_cannabis|age_pop:race_pop:sex_pop][race_pop|age_pop:sex_pop:{resolution}][age_pop|sex_pop:{resolution}][sex_pop|{resolution}][{resolution}]")
-    dag.get_node("sex_pop")["levels"] = drug_use_df.SEX.unique().tolist()
-    dag.get_node("age_pop")["levels"] = drug_use_df.AGE.unique().tolist()
-    dag.get_node("race_pop")["levels"] = drug_use_df.RACE.unique().tolist()
+    dag.get_node("sex_pop")["levels"] = drug_use_df.sex.unique().tolist()
+    dag.get_node("age_pop")["levels"] = drug_use_df.age.unique().tolist()
+    dag.get_node("race_pop")["levels"] = drug_use_df.race.unique().tolist()
     dag.get_node("uses_cannabis")["levels"] = ["n", "y"]
     dag.get_node("incident")["levels"] = ["n", "y"]
     dag.get_node(resolution)[
@@ -64,10 +64,10 @@ def create_dag(drug_use_df: pd.DataFrame, census_df: pd.DataFrame, resolution: L
 
 def get_usage_cpt(dag: DAG, drug_use_df: pd.DataFrame, usage_name: str):
     cross = pd.crosstab(drug_use_df[usage_name], [
-                        drug_use_df.AGE, drug_use_df.RACE, drug_use_df.SEX], normalize="columns")
+                        drug_use_df.age, drug_use_df.race, drug_use_df.sex], normalize="columns")
     cross_mult = cross.multiply(cross.index, axis="rows")
     cross_sum = cross_mult.sum(axis="rows") / (len(cross.index) - 1)
-    columns = [f"{dem.lower()}_pop" for dem in ["AGE", "RACE", "SEX"]]
+    columns = [f"{dem.lower()}_pop" for dem in ["age", "race", "sex"]]
     tuples = list(product(*[dag.get_node(col)["levels"] for col in columns]))
     new_index = pd.MultiIndex.from_tuples(tuples, names=columns)
     cross_sum = cross_sum[new_index]
@@ -78,7 +78,7 @@ def get_usage_cpt(dag: DAG, drug_use_df: pd.DataFrame, usage_name: str):
 # Function to selection "incident" cpt.
 
 
-def get_incident_cpt(census_df: pd.DataFrame, nsduh_df: pd.DataFrame, nibrs_df: pd.DataFrame, dag: DAG, resolution: str, dem_order: List[str] = ["AGE", "RACE", "SEX"]):
+def get_incident_cpt(census_df: pd.DataFrame, nsduh_df: pd.DataFrame, nibrs_df: pd.DataFrame, dag: DAG, resolution: str, dem_order: List[str] = ["age", "race", "sex"]):
     cross = pd.crosstab(nsduh_df.MJDAY30A, [
                         nsduh_df[col] for col in dem_order], normalize="columns")
     cross_mult = cross.multiply(cross.index, axis="rows")
@@ -153,14 +153,14 @@ def create_bn(nsduh_df: pd.DataFrame, nibrs_df: pd.DataFrame, census_df: pd.Data
     # Populate demographic CPTs.
 
     populate_cpd(dag, "race_pop", get_cpd(census_df, dag,
-                "RACE", ["AGE", "SEX", resolution_dict[geographic_resolution]]))
+                "race", ["age", "sex", resolution_dict[geographic_resolution]]))
 
 
     populate_cpd(dag, "sex_pop", get_cpd(census_df, dag,
-                "SEX", [resolution_dict[geographic_resolution]]))
+                "sex", [resolution_dict[geographic_resolution]]))
 
     populate_cpd(dag, "age_pop", get_cpd(census_df, dag,
-                "AGE", ["SEX", resolution_dict[geographic_resolution]]))
+                "age", ["sex", resolution_dict[geographic_resolution]]))
 
     populate_cpd(dag, geographic_resolution, get_cpd(census_df, dag,
                 resolution_dict[geographic_resolution], []))
@@ -197,7 +197,7 @@ def get_ratio_by_vars(bn: DAG, resolution: str, resolution_name: str):
 def get_selection_ratio(dag: DAG, nibrs_df: pd.DataFrame, geographic_resolution: str, min_incidents: int = 0) -> pd.DataFrame:
 
     incident_counts = nibrs_df.groupby(resolution_dict[geographic_resolution]).size().to_frame("incidents").reset_index()
-
+        
     incident_counts = incident_counts[incident_counts.incidents >= min_incidents]
 
     incident_counts["selection_ratio"] = incident_counts[resolution_dict[geographic_resolution]].apply(lambda x: get_ratio_by_vars(dag, geographic_resolution, x))
@@ -206,11 +206,11 @@ def get_selection_ratio(dag: DAG, nibrs_df: pd.DataFrame, geographic_resolution:
 
 def add_race_ratio(census_df: pd.DataFrame, incident_df: pd.DataFrame, geographic_resolution: str):
 
-    race_ratio = census_df.groupby([resolution_dict[geographic_resolution], "RACE"]).frequency.sum().reset_index()
-    race_ratio = race_ratio.pivot(resolution_dict[geographic_resolution], columns="RACE").reset_index()
+    race_ratio = census_df.groupby([resolution_dict[geographic_resolution], "race"]).frequency.sum().reset_index()
+    race_ratio = race_ratio.pivot(resolution_dict[geographic_resolution], columns="race").reset_index()
     race_ratio.columns = [resolution_dict[geographic_resolution], "black", "white"]
     race_ratio["bwratio"] = race_ratio["black"] / race_ratio["white"]
-
+    
     incident_df = pd.merge(incident_df, race_ratio, on=resolution_dict[geographic_resolution], how="left")
 
     return incident_df
@@ -223,20 +223,20 @@ def load_datasets(years: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]
     if (data_path / "census" / f"census_processed_{years}.csv").exists():
         census_df = pd.read_csv(data_path / "census" / f"census_processed_{years}.csv", dtype={'FIPS': object})
     else:
-        subprocess.Popen(["python", str((data_processing_path / "process_census_data.py").resolve()), "--year", years])
+        subprocess.run(["python", str((data_processing_path / "process_census_data.py").resolve()), "--year", years])
         census_df = pd.read_csv(data_path / "census" / f"census_processed_{years}.csv", dtype={'FIPS': object})
 
     if (data_path / "NSDUH" / f"nsduh_processed_{years}.csv").exists():
         nsduh_df = pd.read_csv(data_path / "NSDUH" / f"nsduh_processed_{years}.csv")
     else:
-        subprocess.Popen(["python", str((data_processing_path / "process_nsduh_data.py").resolve()), "--year", years])
+        subprocess.run(["python", str((data_processing_path / "process_nsduh_data.py").resolve()), "--year", years])
         nsduh_df = pd.read_csv(data_path / "NSDUH" / f"nsduh_processed_{years}.csv")
 
-    if (data_path / "NIBRS" / f"nibrs_processed_{years}.csv").exists():
+    if (data_path / "NIBRS" / f"incidents_processed_{years}.csv").exists():
         nibrs_df = pd.read_csv(data_path / "NIBRS" / f"incidents_processed_{years}.csv", dtype={'FIPS': object})
     else:
-        subprocess.Popen(["python", str((data_processing_path / "process_nibrs_data.py").resolve()), "--year", years])
-        nibrs_df = pd.read_csv(data_path / "NIBRS" / f"nibrs_processed_{years}.csv")
+        subprocess.run(["python", str((data_processing_path / "process_nibrs_data.py").resolve()), "--year", years])
+        nibrs_df = pd.read_csv(data_path / "NIBRS" / f"incidents_processed_{years}.csv")
     return census_df, nsduh_df, nibrs_df
 
 
@@ -259,14 +259,14 @@ if __name__ == "__main__":
     selection_bias_df = None
     
     for year in years:
-        census_df, nsduh_df, nibrs_df = load_datasets(args.year)
+        census_df, nsduh_df, nibrs_df = load_datasets(year)
         bn = create_bn(nsduh_df, nibrs_df, census_df, args.resolution)
         temp_df = get_selection_ratio(bn, nibrs_df, args.resolution, args.min_incidents)
-        temp_df = add_race_ratio(census_df, selection_bias_df, args.resolution)
+        temp_df = add_race_ratio(census_df, temp_df, args.resolution)
         temp_df["year"] = year
         if selection_bias_df:
             selection_bias_df = selection_bias_df.append(temp_df.copy())
         else:
             selection_bias_df = temp_df.copy()
 
-    selection_bias_df.to_csv(data_path / "output" / f"selection_ratio_{args.year}.csv")
+    selection_bias_df.to_csv(data_path / "output" / f"selection_ratio_{args.resolution}_{args.year}.csv")

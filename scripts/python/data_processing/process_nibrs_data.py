@@ -18,7 +18,8 @@ cols_to_use = [
     "dm_offender_sex",
     "arrest_type",
     "cannabis_mass",
-    "ori"
+    "ori",
+    "data_year"
 ]
 
 def disjunction(*conditions):
@@ -39,18 +40,18 @@ def load_and_process_nibrs(years: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
         years = years.split("-")
         years = range(int(years[0]), int(years[1]) + 1)
         try:
-            years = [12 - (2019 - int(yi)) for yi in years]
+            years = [int(year) for year in years]
         except:
             print("invalid year format.")
     else:
         try:
-            years = [12 - (2019 - int(years))]
+            years = [int(years)]
         except:
             print("invalid year format.")
 
 
     nibrs_df = pd.read_csv(data_path / "NIBRS" / current_script_name, usecols=cols_to_use)
-
+        
     nibrs_df = nibrs_df[disjunction(*[nibrs_df.data_year == yi for yi in years])]
 
     nibrs_df.rename(columns={
