@@ -10,7 +10,7 @@ from pathlib import Path
 import argparse
 
 data_path = Path(__file__).parent.parent.parent.parent / "data"
-current_script_name = "cannabis_agency_2019_20210608.csv"
+current_script_name = "cannabis_agency_combined_20210608.csv"
 
 cols_to_use = [
     "dm_offender_race_ethnicity",

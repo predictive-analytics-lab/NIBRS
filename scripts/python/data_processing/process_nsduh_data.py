@@ -8,6 +8,15 @@ data_path = Path(__file__).parent.parent.parent.parent / "data"
 
 ############ Level (factor) Conversion Dicts + Functions ###########
 
+columns_to_use = [
+    "NEWRACE2",
+    "CATAG3",
+    "IRSEX",
+    "MJDAY30A",
+    "ANALWT_C"
+]
+
+
 race_dict = {
     1: "white",
     2: "black",
@@ -46,6 +55,7 @@ def binary_usage(n):
     else:
         return 0
 
+
 ######### Data Loading ##########
 
 
@@ -74,7 +84,7 @@ def join_years(years: str) -> pd.DataFrame:
 def load_and_process_nsduh(year: int) -> pd.DataFrame:
     # This is the NSDUH dataset. Only AGE/RACE/SEX/MJDAY30A are selected.
     nsduh_df = pd.read_csv(data_path / "NSDUH" / f"NSDUH_{year}_Tab.tsv",
-                        sep="\t", usecols=["NEWRACE2", "CATAG3", "IRSEX", "MJDAY30A"])
+                        sep="\t", usecols=columns_to_use)
 
     nsduh_df.rename(columns={
         "NEWRACE2": "race",

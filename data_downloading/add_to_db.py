@@ -32,7 +32,8 @@ def main():
             data_dir = next(data_dir.iterdir())
         if (data_dir / 'postgres_setup.sql').is_file():
             commands.append(f"cd {data_dir.resolve()}")
-            commands.append(f"psql {db_name}_{get_year(data_dir)} < postgres_setup.sql")
+            for year in years:
+                commands.append(f"psql {db_name}_{year} < postgres_setup.sql")
             break
     for data_dir in dl_path.iterdir():
         if next(data_dir.iterdir()).is_dir(): # Sometimes /STATE-YEAR/ containts /STATE/

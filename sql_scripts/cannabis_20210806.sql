@@ -1,4 +1,3 @@
--- Copy (
 select
 --	ofr.offender_id as offender_id,
 --	ofr.incident_id as incident_id,
@@ -197,14 +196,12 @@ left join (
 		ni.incident_id
 	from nibrs_incident ni
 		join nibrs_offense no3 on no3.incident_id = ni.incident_id
-		join nibrs_offender no4 on no4.incident_id = ni.incident_id 
+		join nibrs_offender no4 on no4.incident_id = ni.incident_id
 	group by ni.incident_id
 ) inc_counts on ofr.incident_id = inc_counts.incident_id
 left join agencies ag on i.agency_id = ag.agency_id
 left join nibrs_arrest_type nat on nat.arrest_type_id = a.arrest_type_id
-where other_offense = 0 and inc_counts.location_count = 1 and sus_drug.non_mass_units = 0 and ca.other_criminal_acts = 0 and (ofr.ethnicity_id = 1 or ofr.race_id in (1, 2)) and ofr.sex_code ~ '(M|F)' and ofr.age_num is not null and ofr.age_num > 11 and sus_drug.cannabis_mass > 0 and sus_drug.unique_drug_type_count = 1
--- ) To '/mnt/c/Users/Bradley/Desktop/NIBRS/data/cannabis_agency_2019_20210608.csv' With CSV DELIMITER ',' HEADER;
-
+where other_offense = 0 and inc_counts.location_count = 1 and sus_drug.non_mass_units = 0 and ca.other_criminal_acts = 0 and (ofr.ethnicity_id = 1 or ofr.race_id in (1, 2)) and ofr.sex_code ~ '(M|F)' and ofr.age_num is not null and ofr.age_num > 11 and sus_drug.cannabis_mass > 0 and sus_drug.unique_drug_type_count = 1;
 
 
 

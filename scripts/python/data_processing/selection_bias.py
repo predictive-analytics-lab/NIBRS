@@ -61,17 +61,18 @@ def create_dag(drug_use_df: pd.DataFrame, census_df: pd.DataFrame, resolution: L
 
 # Function to create cannabis usage cpt.
 
+def weighted_average_aggregate(group: pd.DataFrame):
+    return (group["MJDAY30A"] * group["ANALWT_C"]).sum() / 30
 
 def get_usage_cpt(dag: DAG, drug_use_df: pd.DataFrame, usage_name: str):
-    cross = pd.crosstab(drug_use_df[usage_name], [
-                        drug_use_df.age, drug_use_df.race, drug_use_df.sex], normalize="columns")
-    cross_mult = cross.multiply(cross.index, axis="rows")
-    cross_sum = cross_mult.sum(axis="rows") / (len(cross.index) - 1)
+    group_weights = drug_use_df.groupby(["age", "race", "sex", usage_name])["ANALWT_C"].sum() / drug_use_df.groupby(["age", "race", "sex"])["ANALWT_C"].sum()
+    group_weights = group_weights.reset_index()
+    group_weights = group_weights.groupby(["age", "race", "sex"]).apply(weighted_average_aggregate).to_frame("MJDAY").reset_index()
     columns = [f"{dem.lower()}_pop" for dem in ["age", "race", "sex"]]
     tuples = list(product(*[dag.get_node(col)["levels"] for col in columns]))
-    new_index = pd.MultiIndex.from_tuples(tuples, names=columns)
-    cross_sum = cross_sum[new_index]
-    x = cross_sum.to_xarray()
+    new_index = pd.MultiIndex.from_tuples(tuples, names=["age", "race", "sex"])
+    cross_sum = group_weights.groupby(["age", "race", "sex"]).mean().reindex(new_index)
+    x = cross_sum.squeeze().to_xarray()
     neg_x = 1 - x.values.copy()
     return np.stack([neg_x, x.copy()], axis=-1)
 
@@ -248,23 +249,23 @@ if __name__ == "__main__":
     parser.add_argument("--min_incidents", help="Minimum number of incidents to be included in the selection bias df.", default=0)
 
     args=parser.parse_args()
-    
+
     if "-" in args.year:
         years = args.year.split("-")
         years = range(int(years[0]), int(years[1]) + 1)
 
     else:
         years = [int(args.year)]
-    
+
     selection_bias_df = None
-    
+
     for year in years:
-        census_df, nsduh_df, nibrs_df = load_datasets(year)
+        census_df, nsduh_df, nibrs_df = load_datasets(str(year))
         bn = create_bn(nsduh_df, nibrs_df, census_df, args.resolution)
         temp_df = get_selection_ratio(bn, nibrs_df, args.resolution, args.min_incidents)
         temp_df = add_race_ratio(census_df, temp_df, args.resolution)
         temp_df["year"] = year
-        if selection_bias_df:
+        if selection_bias_df is not None:
             selection_bias_df = selection_bias_df.append(temp_df.copy())
         else:
             selection_bias_df = temp_df.copy()
