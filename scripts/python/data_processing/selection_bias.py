@@ -5,6 +5,7 @@ CANNABIS-RELATED incidents at a given GEOGRAPHIC RESOLUTION.
 
 ########## IMPORTS ############
 
+import warnings
 import argparse
 from typing import List, Tuple
 from typing_extensions import Literal
@@ -260,7 +261,11 @@ if __name__ == "__main__":
     selection_bias_df = None
 
     for year in years:
-        census_df, nsduh_df, nibrs_df = load_datasets(str(year))
+        try:
+            census_df, nsduh_df, nibrs_df = load_datasets(str(year))
+        except FileNotFoundError:
+            warnings.warn(f"Data missing for {year}. Skipping.")
+            continue
         bn = create_bn(nsduh_df, nibrs_df, census_df, args.resolution)
         temp_df = get_selection_ratio(bn, nibrs_df, args.resolution, args.min_incidents)
         temp_df = add_race_ratio(census_df, temp_df, args.resolution)

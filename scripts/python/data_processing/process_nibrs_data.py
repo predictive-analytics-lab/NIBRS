@@ -9,6 +9,8 @@ import numpy as np
 from pathlib import Path
 import argparse
 import glob
+import warnings
+
 data_path = Path(__file__).parent.parent.parent.parent / "data"
 script_name = lambda x: f"cannabis_agency_{x}_20210608.csv"
 
@@ -28,11 +30,15 @@ def load_and_combine_years(years: List[int]) -> pd.DataFrame:
     """
     df = None
     for year in years:
-        if df is None:
-            df = pd.read_csv(data_path / "NIBRS" / "raw" / script_name(year), usecols=cols_to_use)
-        else:
-            df = df.append(pd.read_csv(data_path / "NIBRS" / "raw" / script_name(year), usecols=cols_to_use))
-    return df
+        try:
+            if df is None:
+                df = pd.read_csv(data_path / "NIBRS" / "raw" / script_name(year), usecols=cols_to_use)
+            else:
+                df = df.append(pd.read_csv(data_path / "NIBRS" / "raw" / script_name(year), usecols=cols_to_use))
+        except FileNotFoundError:
+            years.remove(year)
+            print(f"No NIBRS data for {year}")
+    return df, years
 
 def disjunction(*conditions):
     """
@@ -59,11 +65,14 @@ def load_and_process_nibrs(years: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
         try:
             years = [int(years)]
         except:
-            print("invalid year format.")
+            print("invalid year format. Run appropriate SQL script.")
 
 
-    nibrs_df = load_and_combine_years(years)
-
+    nibrs_df, years = load_and_combine_years(years)
+        
+    if len(years) == 0:
+        return None, None
+    
     nibrs_df = nibrs_df[disjunction(*[nibrs_df.data_year == yi for yi in years])]
 
     nibrs_df.rename(columns={
@@ -107,7 +116,8 @@ if __name__ == "__main__":
     else:
         df, df_a = load_and_process_nibrs(args.year)
     year = args.year if args.year else "2019"
-    df.to_csv(data_path / "NIBRS" / f"incidents_processed_{year}.csv")
-    df_a.to_csv(data_path / "NIBRS" / f"arrests_processed_{year}.csv")
+    if df is not None:
+        df.to_csv(data_path / "NIBRS" / f"incidents_processed_{year}.csv")
+        df_a.to_csv(data_path / "NIBRS" / f"arrests_processed_{year}.csv")
 
 
