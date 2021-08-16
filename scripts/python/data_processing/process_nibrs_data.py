@@ -3,14 +3,14 @@ This python script processes, and modifies, the NIBRS data output from the SQL q
 
 """
 import functools
-from typing import Tuple
+from typing import List, Tuple
 import pandas as pd
 import numpy as np
 from pathlib import Path
 import argparse
-
+import glob
 data_path = Path(__file__).parent.parent.parent.parent / "data"
-current_script_name = "cannabis_agency_combined_20210608.csv"
+script_name = lambda x: f"cannabis_agency_{x}_20210608.csv"
 
 cols_to_use = [
     "dm_offender_race_ethnicity",
@@ -21,6 +21,18 @@ cols_to_use = [
     "ori",
     "data_year"
 ]
+
+def load_and_combine_years(years: List[int]) -> pd.DataFrame:
+    """
+    This function takes a wildcard string, loading in matching dataframes, and combining the years into one CSV.
+    """
+    df = None
+    for year in years:
+        if df is None:
+            df = pd.read_csv(data_path / "NIBRS" / "raw" / script_name(year), usecols=cols_to_use)
+        else:
+            df = df.append(pd.read_csv(data_path / "NIBRS" / "raw" / script_name(year), usecols=cols_to_use))
+    return df
 
 def disjunction(*conditions):
     """
@@ -50,8 +62,8 @@ def load_and_process_nibrs(years: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
             print("invalid year format.")
 
 
-    nibrs_df = pd.read_csv(data_path / "NIBRS" / current_script_name, usecols=cols_to_use)
-        
+    nibrs_df = load_and_combine_years(years)
+
     nibrs_df = nibrs_df[disjunction(*[nibrs_df.data_year == yi for yi in years])]
 
     nibrs_df.rename(columns={
