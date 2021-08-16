@@ -26,15 +26,14 @@ def main():
     
     for year in years:
         commands.append(f"createdb {db_name}_{year}")
-
-    for data_dir in dl_path.iterdir():
-        if next(data_dir.iterdir()).is_dir(): # Sometimes /STATE-YEAR/ containts /STATE/
-            data_dir = next(data_dir.iterdir())
-        if (data_dir / 'postgres_setup.sql').is_file():
-            commands.append(f"cd {data_dir.resolve()}")
-            for year in years:
+        for data_dir in dl_path.iterdir():
+            if year in str(data_dir):
+                if next(data_dir.iterdir()).is_dir():
+                    commands.append(f"cd {next(data_dir.iterdir()).resolve()}")
+                else:
+                    commands.append(f"cd {data_dir.resolve()}")
                 commands.append(f"psql {db_name}_{year} < postgres_setup.sql")
-            break
+                break
     for data_dir in dl_path.iterdir():
         if next(data_dir.iterdir()).is_dir(): # Sometimes /STATE-YEAR/ containts /STATE/
             data_dir = next(data_dir.iterdir())
@@ -47,7 +46,7 @@ def main():
     if args.dry_run:
         print("\n".join(commands))
     else:
-        commands_path = Path(__file__).parent / f"create_{db_name}.sh"
+        commands_path = Path(__file__).parent / f"create_{db_name}_test.sh"
         commands_path.write_text("\n".join(commands))
 
 
