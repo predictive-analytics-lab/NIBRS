@@ -17,13 +17,13 @@ def main():
     commands = []
 
     db_name = args.db_name
-    
+
 
 
     dl_path = (Path(__file__).parent / 'downloads').resolve()
-    
+
     years = list({get_year(data_dir) for data_dir in dl_path.iterdir()})
-    
+
     for year in years:
         commands.append(f"createdb {db_name}_{year}")
         for data_dir in dl_path.iterdir():

@@ -30,7 +30,14 @@ def map_with_slider(df: pd.DataFrame, time_col: str, value_col: str, log: bool =
                             zmin=-1,
                             zmax=1,
                             colorscale = "RdBu",
-                            colorbar= {'title':'# Selection Ratio'})
+                            customdata=df_segmented[["incidents", "bwratio", "state"]].values,
+                            colorbar= {'title':'# Selection Ratio'},
+                            hovertemplate="<br>".join([
+                            "State: %{customdata[2]}",
+                            "Selection Ratio: %{z:.3f}",
+                            "Incidents: %{customdata[0]}",
+                            "Black-White Population Ratio: %{customdata[1]:.3f}",
+                            ]))
 
         data_slider.append(data_each_yr)
 
@@ -42,7 +49,7 @@ def map_with_slider(df: pd.DataFrame, time_col: str, value_col: str, log: bool =
         step['args'][1][i] = True
         steps.append(step)
 
-    sliders = [dict(active=0, pad={"t": 1}, steps=steps)]
+    sliders = [dict(active=len(steps) - 1, pad={"t": 1}, steps=steps)]
 
     layout = dict(title ='State level selection ratio', geo=dict(scope='usa',
                         projection={'type': 'albers usa'}),
@@ -50,7 +57,16 @@ def map_with_slider(df: pd.DataFrame, time_col: str, value_col: str, log: bool =
 
     fig = dict(data=data_slider, layout=layout)
 
-    py.offline.plot(fig, filename=str(map_path / 'state_map_with_slider.html'))
+
+    fig = py.offline.plot(fig, filename=str(map_path / 'state_map_with_slider.html'))
+    fig.update_traces(
+    hovertemplate="<br>".join([
+        "State: %{customdata[2]}",
+        "Selection Ratio: %{z}",
+        "Incidents: %{customdata[0]}",
+        "Black-White Population Ratio: %{customdata[1]}",
+    ])
+)
 
 
 if __name__ == "__main__":

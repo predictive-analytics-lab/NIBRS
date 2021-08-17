@@ -15,7 +15,7 @@ To setup the NIBRS database on your machine, you must:
 
 1. Run `download_and_extract.py` - this will download the required NIBRS database files
 2. Run the command `python add_to_db.py nibrs` to create the bash script "create_nibrs.sh"
-3. Run the command `python fix_nibrs.py` - running a script which removes erroneous duplicates from the nibrs
+3. Run the command `python nibrs_fixes.py` - running a script which removes erroneous duplicates from the nibrs
 3. Run the created bash script with `./create_nibrs.sh`
 
 All of this presumes you already have postgres and python setup on your machine.
