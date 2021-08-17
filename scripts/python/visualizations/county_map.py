@@ -4,16 +4,16 @@ import pandas as pd
 import plotly.graph_objs as go
 import plotly as py
 from pathlib import Path
+from urllib.request import urlopen
+import json
+
+with urlopen('https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json') as response:
+    counties = json.load(response)
 
 data_path = Path(__file__).parents[3] / "data" / "output"
 map_path = Path(__file__).parents[3] / "choropleths"
 
 def map_with_slider(df: pd.DataFrame, time_col: str, value_col: str, log: bool = True,):
-
-    state_abbr = pd.read_csv(data_path.parent / "misc" / "FIPS_ABBRV.csv", usecols=["STATE", "ABBRV"])
-    state_abbr = state_abbr.rename(columns={"STATE":"state"})
-
-    df = pd.merge(df, state_abbr, how='left', on="state")
 
     if log:
         df[value_col] = np.log10(df[value_col])
@@ -24,16 +24,16 @@ def map_with_slider(df: pd.DataFrame, time_col: str, value_col: str, log: bool =
 
         data_each_yr = dict(
                             type='choropleth',
-                            locations = df_segmented['ABBRV'],
+                            locations = df_segmented['FIPS'],
                             z=df_segmented[value_col].astype(float),
-                            locationmode='USA-states',
+                            geojson=counties,
                             zmin=-1,
                             zmax=1,
                             colorscale = "RdBu",
-                            customdata=df_segmented[["incidents", "bwratio", "state"]].values,
+                            customdata=df_segmented[["incidents", "bwratio", "FIPS"]].values,
                             colorbar= {'title':'# Selection Ratio'},
                             hovertemplate="<br>".join([
-                            "State: %{customdata[2]}",
+                            "FIPS: %{customdata[2]}",
                             "Selection Ratio: %{z:.3f}",
                             "Incidents: %{customdata[0]}",
                             "Black-White Population Ratio: %{customdata[1]:.3f}",
@@ -51,14 +51,14 @@ def map_with_slider(df: pd.DataFrame, time_col: str, value_col: str, log: bool =
 
     sliders = [dict(active=len(steps) - 1, pad={"t": 1}, steps=steps)]
 
-    layout = dict(title ='State level selection ratio', geo=dict(scope='usa',
+    layout = dict(title ='County level selection ratio', geo=dict(scope='usa',
                         projection={'type': 'albers usa'}),
                 sliders=sliders)
 
     fig = dict(data=data_slider, layout=layout)
 
 
-    fig = py.offline.plot(fig, filename=str(map_path / 'state_map_with_slider.html'))
+    fig = py.offline.plot(fig, filename=str(map_path / 'county_map_with_slider.html'))
     fig.update_traces(
     hovertemplate="<br>".join([
         "State: %{customdata[2]}",
@@ -71,5 +71,5 @@ def map_with_slider(df: pd.DataFrame, time_col: str, value_col: str, log: bool =
 
 if __name__ == "__main__":
     data_path = Path(__file__).parents[3] / "data" / "output"
-    df = pd.read_csv(data_path / "selection_ratio_state_2016-2019.csv")
+    df = pd.read_csv(data_path / "selection_ratio_county_2016-2019.csv", dtype={'FIPS': object})
     map_with_slider(df, "year", "selection_ratio")

@@ -274,5 +274,4 @@ if __name__ == "__main__":
             selection_bias_df = selection_bias_df.append(temp_df.copy())
         else:
             selection_bias_df = temp_df.copy()
-
     selection_bias_df.to_csv(data_path / "output" / f"selection_ratio_{args.resolution}_{args.year}.csv")
