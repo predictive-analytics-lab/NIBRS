@@ -374,7 +374,7 @@ if __name__ == "__main__":
 
     for year in years:
         try:
-            census_df, nsduh_df, nibrs_df = load_datasets(str(year), args.smooth)
+            census_df, nsduh_df, nibrs_df = load_datasets(str(year), args.smooth == "True")
         except FileNotFoundError:
             warnings.warn(f"Data missing for {year}. Skipping.")
             continue
