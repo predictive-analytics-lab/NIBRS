@@ -13,7 +13,7 @@ columns_to_use = [
     "CATAG3",
     "IRSEX",
     "MJDAY30A",
-    "ANALWT_C"
+    "ANALWT_C",
 ]
 
 

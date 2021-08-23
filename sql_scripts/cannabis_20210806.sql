@@ -57,13 +57,13 @@ select
 		when prop.drug_equipment_value < 100 then '1-100'
 		when prop.drug_equipment_value < 1000 then '101-1000'
 		else '1000+'
-	end as drug_equipment_value,
-	case 
-		when sus_drug.cannabis_mass <= 1 then '(0, 1]'
-		when sus_drug.cannabis_mass <= 4 then '(1, 4]'
-		when sus_drug.cannabis_mass <= 30 then '(4, 30]'
-		else '(30, inf]'
-	end as cannabis_mass
+	end as drug_equipment_value
+	-- case 
+	-- 	when sus_drug.cannabis_mass <= 1 then '(0, 1]'
+	-- 	when sus_drug.cannabis_mass <= 4 then '(1, 4]'
+	-- 	when sus_drug.cannabis_mass <= 30 then '(4, 30]'
+	-- 	else '(30, inf]'
+	-- end as cannabis_mass
 from nibrs_offender ofr
 left join nibrs_incident i on ofr.incident_id = i.incident_id
 left join nibrs_arrestee a on ofr.incident_id = a.incident_id and ofr.offender_seq_num = a.arrestee_seq_num
@@ -105,25 +105,25 @@ left join (
 		COUNT(sd.suspected_drug_type_id) as drug_type_count,
 		-- split quantities of 5 most common drugs into new columns
 		sum(case
-			when sd.suspected_drug_type_id = 1 then tot_mass.est_drug_mass
+			when sd.suspected_drug_type_id = 1 then 1 -- tot_mass.est_drug_mass
 			else 0
-		end) as crack_mass,
+		end) as crack_count,
 		sum(case
-			when sd.suspected_drug_type_id = 2 then tot_mass.est_drug_mass
+			when sd.suspected_drug_type_id = 2 then 1 --tot_mass.est_drug_mass
 			else 0
-		end) as cocaine_mass,
+		end) as cocaine_count,
 		sum(case
-			when sd.suspected_drug_type_id = 4 then tot_mass.est_drug_mass
+			when sd.suspected_drug_type_id = 4 then 1 --tot_mass.est_drug_mass
 			else 0
-		end) as heroin_mass,
+		end) as heroin_count,
 		sum(case
-			when sd.suspected_drug_type_id = 5 then tot_mass.est_drug_mass
+			when sd.suspected_drug_type_id = 5 then 1 --tot_mass.est_drug_mass
 			else 0
-		end) as cannabis_mass,
+		end) as cannabis_count,
 		sum(case
-			when sd.suspected_drug_type_id = 12 then tot_mass.est_drug_mass
+			when sd.suspected_drug_type_id = 12 then 1 --tot_mass.est_drug_mass
 			else 0
-		end) as meth_amphetamines_mass,
+		end) as meth_amphetamines_count,
 		-- bool for other drugs being present too
 		count(distinct case
 			when sd.suspected_drug_type_id not in (1,2,4,5,12) then sd.suspected_drug_type_id
@@ -201,7 +201,7 @@ left join (
 ) inc_counts on ofr.incident_id = inc_counts.incident_id
 left join agencies ag on i.agency_id = ag.agency_id
 left join nibrs_arrest_type nat on nat.arrest_type_id = a.arrest_type_id
-where other_offense = 0 and inc_counts.location_count = 1 and sus_drug.non_mass_units = 0 and ca.other_criminal_acts = 0 and (ofr.ethnicity_id = 1 or ofr.race_id in (1, 2)) and ofr.sex_code ~ '(M|F)' and ofr.age_num is not null and ofr.age_num > 11 and sus_drug.cannabis_mass > 0 and sus_drug.unique_drug_type_count = 1;
+where other_offense = 0 and inc_counts.location_count = 1 and ca.other_criminal_acts = 0 and (ofr.ethnicity_id = 1 or ofr.race_id in (1, 2)) and ofr.sex_code ~ '(M|F)' and ofr.age_num is not null and ofr.age_num > 11 and sus_drug.cannabis_count > 0 and sus_drug.unique_drug_type_count = 1;
 
 
 

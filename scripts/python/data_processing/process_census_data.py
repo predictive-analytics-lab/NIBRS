@@ -88,6 +88,16 @@ def AGE(x: pd.Series):
         return "85+"
     return "total"
 
+def reporting_coverage(df: pd.DataFrame, resolution: str) -> pd.DataFrame:
+    agency_df = pd.read_csv(data_path / "misc" / "agency_participation.csv", usecols=["ori", "nibrs_participated", "population", "data_year"])
+    agency_df = agency_df[agency_df.data_year == 2019]
+    fips_ori_df = pd.read_csv(data_path / "misc" / "LEAIC.tsv", delimiter="\t", usecols=["ORI9", "FIPS"], dtype={'FIPS': object})
+    fips_ori_df = fips_ori_df.rename(columns={"ORI9": "ori"})
+    agency_df = pd.merge(agency_df, fips_ori_df, on="ori")
+    agency_df = agency_df[agency_df["nibrs_participated"] != "Y"]
+    coverage = (agency_df.groupby(resolution).population.sum() / df.groupby(resolution).frequency.sum()).clip(upper=1).to_frame("coverage").reset_index()
+    df = df.merge(coverage, on=resolution, how="left")
+    return df.fillna(0)
 
 def disjunction(*conditions):
     """
@@ -135,6 +145,10 @@ def load_and_process_census_data(years: str) -> pd.DataFrame:
     df["AGE"] = df["AGEGRP"].map(AGE)
     df["FIPS"] = df["STATE"] + df["COUNTY"]
     df["YEAR"] += 2007 # Not quite sure why 2007 is the magic number.. but ¯\_(ツ)_/¯
+    
+    df = reporting_coverage(df, "FIPS")
+    df.frequency = np.floor(df.frequency * df.coverage).astype(int)
+    df = df.drop(["coverage"], axis=1)
 
     df = df[df.AGE != "total"]
 

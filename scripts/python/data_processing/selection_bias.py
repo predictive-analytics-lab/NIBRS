@@ -5,12 +5,15 @@ CANNABIS-RELATED incidents at a given GEOGRAPHIC RESOLUTION.
 
 ########## IMPORTS ############
 
+from functools import partial
 import warnings
 import argparse
-from typing import List, Tuple
+from typing import Callable, List, Tuple
 from typing_extensions import Literal
 import numpy as np
 import pandas as pd
+import geopandas as gpd
+from libpysal.weights import Queen
 import baynet
 from baynet import DAG
 from baynet.interventions import collapse_posterior
@@ -85,11 +88,10 @@ def get_incident_cpt(census_df: pd.DataFrame, nsduh_df: pd.DataFrame, nibrs_df: 
                         nsduh_df[col] for col in dem_order], normalize="columns")
     cross_mult = cross.multiply(cross.index, axis="rows")
     cross_sum = cross_mult.sum(axis="rows") / 30
-    grouped_incidents = nibrs_df.groupby(
-        sorted(dem_order + [resolution_dict[resolution]], key=str.casefold)).size()
     expected_incidents = (census_df.groupby(sorted(
         dem_order + [resolution_dict[resolution]], key=str.casefold))["frequency"].sum() * cross_sum * 365)
-    inc_cpt = grouped_incidents / expected_incidents
+    incidents = nibrs_df.groupby(sorted(dem_order + [resolution_dict[resolution]], key=str.casefold)).incidents.sum()
+    inc_cpt = incidents / expected_incidents
     columns = sorted(
         [f"{dem.lower()}_pop" for dem in dem_order] + [resolution])
     tuples = list(product(*[dag.get_node(col)["levels"] for col in columns]))
@@ -171,7 +173,6 @@ def create_bn(nsduh_df: pd.DataFrame, nibrs_df: pd.DataFrame, census_df: pd.Data
 
     populate_cpd(dag, "incident", get_incident_cpt(census_df, nsduh_df,
                 nibrs_df, dag, geographic_resolution))
-    
     return dag
 
 
@@ -198,8 +199,8 @@ def get_ratio_by_vars(bn: DAG, resolution: str, resolution_name: str):
 
 def get_selection_ratio(dag: DAG, nibrs_df: pd.DataFrame, geographic_resolution: str, min_incidents: int = 0) -> pd.DataFrame:
 
-    incident_counts = nibrs_df.groupby(resolution_dict[geographic_resolution]).size().to_frame("incidents").reset_index()
-        
+    incident_counts = nibrs_df.groupby(resolution_dict[geographic_resolution]).incidents.sum().reset_index()
+
     incident_counts = incident_counts[incident_counts.incidents >= min_incidents]
 
     incident_counts["selection_ratio"] = incident_counts[resolution_dict[geographic_resolution]].apply(lambda x: get_ratio_by_vars(dag, geographic_resolution, x))
@@ -212,22 +213,35 @@ def add_race_ratio(census_df: pd.DataFrame, incident_df: pd.DataFrame, geographi
     race_ratio = race_ratio.pivot(resolution_dict[geographic_resolution], columns="race").reset_index()
     race_ratio.columns = [resolution_dict[geographic_resolution], "black", "white"]
     race_ratio["bwratio"] = race_ratio["black"] / race_ratio["white"]
-    
+
     incident_df = pd.merge(incident_df, race_ratio, on=resolution_dict[geographic_resolution], how="left")
 
     return incident_df
 
 ############ DATASET LOADING #############
+def join_with_counties(df: pd.DataFrame, county_shp: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    mainland_states = list(set(range(57)) - {3, 7, 14, 43, 52})
+    mainland_states = [str(i).zfill(2) for i in mainland_states]
+    county_shp = county_shp[county_shp["statefp"].isin(mainland_states)]
+    county_shp.rename(columns={"geoid":"FIPS"}, inplace=True)
+    county_shp = county_shp.merge(df, on="FIPS", how="inner")
+    return county_shp.reset_index()
 
-def load_datasets(years: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def join_state_with_counties(df: pd.DataFrame, county_shp: gpd.GeoDataFrame, state: str) -> gpd.GeoDataFrame:
+    county_shp = county_shp[county_shp["state_name"] == state]
+    county_shp.rename(columns={"geoid":"FIPS"}, inplace=True)
+    county_shp = county_shp.merge(df, on="FIPS", how="left")
+    return county_shp.reset_index()
+
+
+def load_datasets(years: str, smooth: bool) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     # This is the county level census data. See "process_census_data.py".
     # FIPS code is loaded in as an 'object' to avoid integer conversion.
     if (data_path / "census" / f"census_processed_{years}.csv").exists():
-        census_df = pd.read_csv(data_path / "census" / f"census_processed_{years}.csv", dtype={'FIPS': object})
+        census_df = pd.read_csv(data_path / "census" / f"census_processed_{years}.csv", dtype={'FIPS': object}, index_col=0)
     else:
         subprocess.run(["python", str((data_processing_path / "process_census_data.py").resolve()), "--year", years])
-        census_df = pd.read_csv(data_path / "census" / f"census_processed_{years}.csv", dtype={'FIPS': object})
-
+        census_df = pd.read_csv(data_path / "census" / f"census_processed_{years}.csv", dtype={'FIPS': object}, index_col=0)
     if (data_path / "NSDUH" / f"nsduh_processed_{years}.csv").exists():
         nsduh_df = pd.read_csv(data_path / "NSDUH" / f"nsduh_processed_{years}.csv")
     else:
@@ -235,12 +249,109 @@ def load_datasets(years: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]
         nsduh_df = pd.read_csv(data_path / "NSDUH" / f"nsduh_processed_{years}.csv")
 
     if (data_path / "NIBRS" / f"incidents_processed_{years}.csv").exists():
-        nibrs_df = pd.read_csv(data_path / "NIBRS" / f"incidents_processed_{years}.csv", dtype={'FIPS': object})
+        nibrs_df = pd.read_csv(data_path / "NIBRS" / f"incidents_processed_{years}.csv", dtype={'FIPS': object}, index_col=0)
     else:
-        subprocess.run(["python", str((data_processing_path / "process_nibrs_data.py").resolve()), "--year", years])
-        nibrs_df = pd.read_csv(data_path / "NIBRS" / f"incidents_processed_{years}.csv")
+        subprocess.run(["python", str((data_processing_path / "process_nibrs_data.py").resolve()), "--year", years, "--resolution", "county"])
+        nibrs_df = pd.read_csv(data_path / "NIBRS" / f"incidents_processed_{years}.csv", dtype={'FIPS': object}, index_col=0)
+    if smooth:
+        census_df = smooth_census(census_df)
+        nibrs_df = smooth_nibrs(nibrs_df)
     return census_df, nsduh_df, nibrs_df
 
+def smooth_nibrs(nibrs_df: pd.DataFrame) -> pd.DataFrame:
+    county_shp = gpd.read_file(data_path / "misc" / "us-county-boundaries.geojson")
+    smoothed_df = None
+    for state in nibrs_df.state.unique():
+        if smoothed_df is not None:
+            smoothed_df = smoothed_df.append(smooth_nibrs_state(nibrs_df[nibrs_df.state == state], county_shp))
+        else:
+            smoothed_df = smooth_nibrs_state(nibrs_df[nibrs_df.state == state], county_shp)
+    return smoothed_df
+
+def reporting(state_df: gpd.GeoDataFrame) -> pd.DataFrame:
+    agency_df = pd.read_csv(data_path / "misc" / "agency_participation.csv", usecols=["ori", "nibrs_participated", "data_year"])
+    agency_df = agency_df[agency_df.data_year == 2019]
+    fips_ori_df = pd.read_csv(data_path / "misc" / "LEAIC.tsv", delimiter="\t", usecols=["ORI9", "FIPS"], dtype={'FIPS': object})
+    fips_ori_df = fips_ori_df.rename(columns={"ORI9": "ori"})
+    agency_df = pd.merge(agency_df, fips_ori_df, on="ori")
+    reporting = agency_df.groupby("FIPS").nibrs_participated.apply(lambda x: "Y" if any(x == "Y") else "N").to_frame("reporting").reset_index()
+    return state_df.merge(reporting, how="left", on="FIPS")
+
+
+def smooth_nibrs_state(state_df: pd.DataFrame, county_gdf: gpd.GeoDataFrame) -> pd.DataFrame:
+    state = state_df.state.unique()[0]
+    state_df, urban_df = filter_urban(state_df, 2)
+    state_df.drop(["urban_code"], axis=1, inplace=True)
+    urban_df.drop(["urban_code"], axis=1, inplace=True)
+    if len(state_df) <= 0:
+        return urban_df
+    locations = state_df[["state", "state_region", "FIPS"]].drop_duplicates()
+    state_df_p = state_df.pivot_table(index=["FIPS"], columns=["age", "race", "sex"], values="incidents")
+    state_gdf_p = join_state_with_counties(state_df_p, county_gdf, state).sort_values(by=["FIPS"])
+    qW = Queen.from_dataframe(state_gdf_p)
+    amat, _ = qW.full()
+    county_weights = get_county_weights(amat)
+    
+    state_gdf_p = reporting(state_gdf_p)
+    state_gdf_p.loc[state_gdf_p.FIPS.isin(urban_df.FIPS.unique()), "reporting"] = "N"
+    indicies = np.nonzero((state_gdf_p.reporting == "Y").values)[0]
+    state_gdf_p = state_gdf_p.iloc[indicies, :]
+    state_gdf_p = state_gdf_p.fillna(0)
+    state_gdf_p.drop(["reporting"], axis=1, inplace=True)    
+    county_weights = county_weights[np.ix_(indicies, indicies)]
+    state_gdf_p.iloc[:, 22:] = county_weights @ state_gdf_p.iloc[:, 22:].values
+                
+    state_gdf_p = state_gdf_p[["FIPS",  *state_gdf_p.columns[22:].values]].melt(id_vars=["FIPS"], value_name="incidents")
+    state_gdf_p['age'], state_gdf_p['race'], state_gdf_p['sex'] = state_gdf_p['variable'].str
+    state_gdf_p.drop(["variable"], axis=1, inplace=True)
+    state_gdf_p = state_gdf_p.merge(locations, on="FIPS", how="inner")
+    return state_df.append(urban_df).reset_index()
+
+def get_county_weights(state_amat: np.ndarray, max_path_length: int = 5, distance_weighting: Callable[[int], float] = lambda x,y: 0.0 if x==0 else 1/(y+1)) -> np.ndarray:
+    vfunc = np.vectorize(distance_weighting)
+    new_bool_amat = state_amat.copy()
+    new_weighted_amat = vfunc(new_bool_amat, 1).astype(float)
+    for path_length in range(2, max_path_length+1):
+        paths = (np.linalg.matrix_power(state_amat, path_length) > 0).astype(int)
+        added_paths = ((paths - new_bool_amat) > 0).astype(int)
+        new_bool_amat += added_paths
+        new_weighted_amat += vfunc(added_paths, path_length)
+    np.fill_diagonal(new_weighted_amat, 1)
+    return new_weighted_amat
+
+def smooth_census(census_df: pd.DataFrame) -> gpd.GeoDataFrame:
+    county_shp = gpd.read_file(data_path / "misc" / "us-county-boundaries.geojson")
+    smoothed_df = None
+    for state in census_df.state.unique():
+        if smoothed_df is not None:
+            smoothed_df = smoothed_df.append(smooth_census_state(census_df[census_df.state == state], county_shp))
+        else:
+            smoothed_df = smooth_census_state(census_df[census_df.state == state], county_shp)
+    return smoothed_df
+
+def filter_urban(df: pd.DataFrame, urban_level: int) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    urban_codes = pd.read_csv(data_path / "misc" / "NCHSURCodes2013.csv", usecols=["FIPS code", "2013 code"])
+    urban_codes.rename(columns={"FIPS code":"FIPS", "2013 code": "urban_code"}, inplace=True)
+    urban_codes["FIPS"] = urban_codes.FIPS.apply(lambda x: str(x).rjust(5, "0"))
+    df = pd.merge(df, urban_codes, on="FIPS", how="left")
+    return df[df.urban_code > urban_level], df[df.urban_code <= urban_level]
+
+def smooth_census_state(state_df: pd.DataFrame, county_gdf: gpd.GeoDataFrame) -> pd.DataFrame:
+    state_df, urban_df = filter_urban(state_df, 2)
+    if len(state_df) <= 0:
+        return urban_df
+    joiner = state_df.groupby(["FIPS", "age", "race", "sex"]).first().sort_values(by=["age", "race", "sex"])
+    joiner = joiner.drop(["ori"], axis=1)
+    state_df_p = state_df.pivot_table(index=["FIPS"], columns=["age", "race", "sex"], values="frequency")
+    state_df = state_df[["FIPS", "ori"]].drop_duplicates()
+    state_gdf_p = join_with_counties(state_df_p.reset_index(), county_gdf).sort_values(by=["FIPS"])
+    qW = Queen.from_dataframe(state_gdf_p)
+    amat, _ = qW.full()
+    county_weights = get_county_weights(amat)
+    state_gdf_p.iloc[:, 22:] = county_weights @ state_gdf_p.iloc[:, 22:].values
+    joiner["frequency"] = state_gdf_p.iloc[:, 22:].values.flatten("F")
+    state_df = pd.merge(state_df, joiner.reset_index(), how="left", on="FIPS")
+    return state_df.append(urban_df).reset_index()
 
 if __name__ == "__main__":
     parser=argparse.ArgumentParser()
@@ -248,6 +359,7 @@ if __name__ == "__main__":
     parser.add_argument("--year", help="year, or year range.", default="2019")
     parser.add_argument("--resolution", help="The geographic resolution", default="state")
     parser.add_argument("--min_incidents", help="Minimum number of incidents to be included in the selection bias df.", default=0)
+    parser.add_argument("--smooth", help="Minimum number of incidents to be included in the selection bias df.", default=False)
 
     args=parser.parse_args()
 
@@ -262,7 +374,7 @@ if __name__ == "__main__":
 
     for year in years:
         try:
-            census_df, nsduh_df, nibrs_df = load_datasets(str(year))
+            census_df, nsduh_df, nibrs_df = load_datasets(str(year), args.smooth)
         except FileNotFoundError:
             warnings.warn(f"Data missing for {year}. Skipping.")
             continue

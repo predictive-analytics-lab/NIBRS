@@ -19,10 +19,12 @@ cols_to_use = [
     "dm_offender_age",
     "dm_offender_sex",
     "arrest_type",
-    "cannabis_mass",
     "ori",
     "data_year"
 ]
+
+resolution_dict = {"state": "state",
+                   "state_region": "state_region", "county": "FIPS", "agency":  "ori"}
 
 def load_and_combine_years(years: List[int]) -> pd.DataFrame:
     """
@@ -46,7 +48,7 @@ def disjunction(*conditions):
     """
     return functools.reduce(np.logical_or, conditions)
 
-def load_and_process_nibrs(years: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def load_and_process_nibrs(years: str, resolution: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     This function loads the current nibrs dataset, and processes it.
     Additionally, it adds the FIPS code and state subregion code to the data.
@@ -95,26 +97,31 @@ def load_and_process_nibrs(years: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
     nibrs_df = pd.merge(nibrs_df, subregion_df, on="FIPS")
     nibrs_df["state_region"] = nibrs_df["State"] + "-" + nibrs_df["Region"]
 
-    nibrs_arrests = nibrs_df[nibrs_df.arrest_type != "No Arrest"]
-
     # Clean up
     nibrs_df.rename(columns={"State":"state"}, inplace=True)
     nibrs_df.drop(["Region"], axis=1, inplace=True)
+    
+    nibrs_arrests = nibrs_df[nibrs_df.arrest_type != "No Arrest"]
+    
+    locations = nibrs_df[["state", "state_region", "FIPS"]].drop_duplicates()
+    
+    nibrs_df = nibrs_df.groupby(sorted(["age", "race", "sex"] + [resolution_dict[resolution]], key=str.casefold)).size().to_frame("incidents").reset_index()
+    nibrs_arrests = nibrs_arrests.groupby(sorted(["age", "race", "sex"] + [resolution_dict[resolution]], key=str.casefold)).size().to_frame("incidents").reset_index()
+    
+    nibrs_df = nibrs_df.merge(locations, on=resolution_dict[resolution], how="inner")
+    nibrs_arrests = nibrs_arrests.merge(locations, on=resolution_dict[resolution], how="inner")
 
     return nibrs_df, nibrs_arrests
 
 if __name__ == "__main__":
     parser=argparse.ArgumentParser()
 
-    parser.add_argument("--year", help="year, or year range.")
+    parser.add_argument("--year", help="year, or year range.", default="2019")
+    parser.add_argument("--resolution", help="Geographic resolution to aggregate incidents over.", default="state")
 
     args=parser.parse_args()
 
-    if not args.year:
-        print("No year specified. Defaulting to 2019")
-        df, df_a = load_and_process_nibrs("2019")
-    else:
-        df, df_a = load_and_process_nibrs(args.year)
+    df, df_a = load_and_process_nibrs(args.year, args.resolution)
     year = args.year if args.year else "2019"
     if df is not None:
         df.to_csv(data_path / "NIBRS" / f"incidents_processed_{year}.csv")

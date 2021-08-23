@@ -34,7 +34,7 @@ def map_with_slider(df: pd.DataFrame, time_col: str, value_col: str, log: bool =
                             colorbar= {'title':'# Selection Ratio'},
                             hovertemplate="<br>".join([
                             "FIPS: %{customdata[2]}",
-                            "Selection Ratio: %{z:.3f}",
+                            "Selection Ratio (log10): %{z:.3f}",
                             "Incidents: %{customdata[0]}",
                             "Black-White Population Ratio: %{customdata[1]:.3f}",
                             ]))
@@ -59,14 +59,6 @@ def map_with_slider(df: pd.DataFrame, time_col: str, value_col: str, log: bool =
 
 
     fig = py.offline.plot(fig, filename=str(map_path / 'county_map_with_slider.html'))
-    fig.update_traces(
-    hovertemplate="<br>".join([
-        "State: %{customdata[2]}",
-        "Selection Ratio: %{z}",
-        "Incidents: %{customdata[0]}",
-        "Black-White Population Ratio: %{customdata[1]}",
-    ])
-)
 
 
 if __name__ == "__main__":

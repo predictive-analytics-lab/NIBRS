@@ -38,7 +38,7 @@ def map_with_slider(df: pd.DataFrame, time_col: str, value_col: str, log: bool =
                             colorbar= {'title':'# Selection Ratio'},
                             hovertemplate="<br>".join([
                             "State sub-region: %{customdata[2]}",
-                            "Selection Ratio: %{z:.3f}",
+                            "Selection Ratio (log10): %{z:.3f}",
                             "Incidents: %{customdata[0]}",
                             "Black-White Population Ratio: %{customdata[1]:.3f}",
                             ]),
