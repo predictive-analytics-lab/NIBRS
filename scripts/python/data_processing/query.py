@@ -2,6 +2,7 @@ from os import PathLike
 from typing import Generator, List, Optional
 import pandas as pd
 from pathlib import Path
+from tqdm import tqdm
 
 data_dir = Path(__file__).resolve().parents[3] / "data_downloading" / "downloads"
 
@@ -10,10 +11,10 @@ def search_filename(name: str, dir: Path) -> Path:
         if name in filename.name.lower():
             return filename
 
-def query_one_year(year_dir: Path) -> pd.DataFrame:
+def query_one_state_year(year_dir: Path) -> pd.DataFrame:
     """Combine a single year-state combination into the desired df form."""
-    if (subdir := year_dir / year_dir.stem.split("-")[0]).is_dir():
-        # Sometimes we end up with /year-state/state/
+    if (subdir := year_dir / next(year_dir.iterdir())).is_dir():
+        # Sometimes we end up with /year-state/subdir_with_random_name/
         year_dir = subdir
 
     def read_csv(name: str, usecols: Optional[List[str]] = None) -> pd.DataFrame:
@@ -62,7 +63,12 @@ def query_one_year(year_dir: Path) -> pd.DataFrame:
         1: 3
     }, na_action="ignore")
     criminal_act_df["criminal_act"] = criminal_act_df["criminal_act"].fillna(0)
-    offense_df = read_csv("offense", usecols=["offense_id", "incident_id"])
+    offense_df = read_csv("offense", usecols=["offense_id", "incident_id", "offense_type_id"])
+
+    offense_df['drug_offense'] = offense_df["offense_type_id"] == 16
+    offense_df['drug_equipment_offense'] = offense_df["offense_type_id"] == 35
+    offense_df['other_offense'] = ~offense_df["offense_type_id"].isin([16, 35])
+    
     criminal_act_df = criminal_act_df.merge(offense_df, on="offense_id", how="left")
     criminal_act_df['criminal_act_count'] = 1
     criminal_act_df['other_criminal_act_count'] = ~criminal_act_df["criminal_act_id"].isin([1, 6, 8])
@@ -70,7 +76,10 @@ def query_one_year(year_dir: Path) -> pd.DataFrame:
     criminal_act_df = criminal_act_df.groupby("incident_id").agg({
         'criminal_act_count': "sum",
         'other_criminal_act_count': "sum",
-        'criminal_act': "max"
+        'criminal_act': "max",
+        'drug_offense': "any",
+        'drug_equipment_offense': "any",
+        'other_offense': "any"
     })
     criminal_act_df['criminal_act'] = criminal_act_df['criminal_act'].map({
         1: "consuming",
@@ -94,8 +103,38 @@ def query_one_year(year_dir: Path) -> pd.DataFrame:
         2: "black"
     })
 
+    # Add a count of drug types
+    main_df['unique_drug_type_count'] = sum([main_df[f"{drug}_count"].astype(bool) for drug in drugs]) + main_df['other_drugs_count']
+
+    main_df = main_df.merge(read_csv("month", usecols=["nibrs_month_id", "data_year", "month_num"]), on="nibrs_month_id")
+
+    main_df = main_df[
+        (main_df['other_offense'] == False) &
+        # (main_df['location_count'] == 1) &
+        (main_df['other_criminal_act_count'] == 0) &
+        (main_df['ethnicity_id'] != 1) &
+        (main_df['race_id'].isin([1, 2])) &
+        (main_df['sex_code'].isin(["M", "F"])) &
+        (~main_df['age_num'].isna()) &
+        (main_df['age_num'] > 11) &
+        (main_df['cannabis_count'] > 0) &
+        (main_df['unique_drug_type_count'] == 1)
+    ]
+
+    main_df = main_df.drop(columns=["nibrs_month_id", "offender_id", "incident_id", "race_id", "ethnicity_id", "nibrs_month_id"])
     return main_df
 
+
+def query_all(downloads_dir: Path) -> pd.DataFrame:
+    combined_df = pd.DataFrame()
+    for sy_dir in tqdm(list(data_dir.iterdir())):
+        data_year = sy_dir.stem.split("-")[-1]
+        df = query_one_state_year(sy_dir)
+        combined_df = combined_df.append(df)
+    return combined_df
+
+
 if __name__ == "__main__":
-    df = query_one_year(data_dir / "TX-2019") # next(data_dir.iterdir()))
+    #df = query_one_state_year(data_dir / "NE-2019") # next(data_dir.iterdir()))
+    df = query_all(data_dir)
 
