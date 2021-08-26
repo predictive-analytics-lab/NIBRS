@@ -9,6 +9,7 @@ import argparse
 import functools
 
 from pathlib import Path
+from typing import List, Union
 from matplotlib import pyplot as plt
 import pandas as pd
 import numpy as np
@@ -105,7 +106,7 @@ def disjunction(*conditions):
     """
     return functools.reduce(np.logical_or, conditions)
 
-def load_and_process_census_data(years: str) -> pd.DataFrame:
+def load_and_process_census_data(years: Union[str, List[str]]) -> pd.DataFrame:
     """
     Function which takes a list of years and returns a dataframe of the census data of the given years.
     
@@ -114,19 +115,21 @@ def load_and_process_census_data(years: str) -> pd.DataFrame:
      - Recodes the RACESEX and AGE columns
      - Adds FIPS and state sub-region columns
     """
-
-    if "-" in years:
-        years = years.split("-")
-        years = range(int(years[0]), int(years[1]) + 1)
-        try:
-            years = [12 - (2019 - int(yi)) for yi in years]
-        except:
-            print("invalid year format.")
-    else:
-        try:
-            years = [12 - (2019 - int(years))]
-        except:
-            print("invalid year format.")
+    if isinstance(years, str):
+        if "-" in years:
+            years = years.split("-")
+            years = range(int(years[0]), int(years[1]) + 1)
+            try:
+                years = [12 - (2019 - int(yi)) for yi in years]
+            except:
+                print("invalid year format.")
+        else:
+            try:
+                years = [12 - (2019 - int(years))]
+            except:
+                print("invalid year format.")
+    elif isinstance(years, list):
+        years = [12 - (2019 - int(y)) for y in years]
 
 
     #LOAD DATA

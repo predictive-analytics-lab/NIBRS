@@ -197,14 +197,33 @@ def get_ratio_by_vars(bn: DAG, resolution: str, resolution_name: str):
     return get_selection_by_vars(bn, "black", resolution, resolution_name) / get_selection_by_vars(bn, "white", resolution, resolution_name)
 
 
-def get_selection_ratio(dag: DAG, nibrs_df: pd.DataFrame, geographic_resolution: str, min_incidents: int = 0) -> pd.DataFrame:
+def get_selection_ratio(dag: DAG, nibrs_df: pd.DataFrame, incident_df: pd.DataFrame, census_df: pd.DataFrame, geographic_resolution: str, min_incidents: int = 0) -> pd.DataFrame:
+    
+    non_smoothed_counts = incident_df.groupby(resolution_dict[geographic_resolution]).incidents.sum().reset_index()
 
     incident_counts = nibrs_df.groupby(resolution_dict[geographic_resolution]).incidents.sum().reset_index()
 
     incident_counts = incident_counts[incident_counts.incidents >= min_incidents]
 
     incident_counts["selection_ratio"] = incident_counts[resolution_dict[geographic_resolution]].apply(lambda x: get_ratio_by_vars(dag, geographic_resolution, x))
-
+    
+    incident_counts.drop(columns=["incidents"], inplace=True)
+    
+    incident_counts = pd.merge(incident_counts, non_smoothed_counts, on=[resolution_dict[geographic_resolution]], how="left")
+    
+    census_df.drop(columns=["ori"], inplace=True)
+    
+    census_df.drop_duplicates(inplace=True)
+        
+    popdf = census_df.groupby([resolution_dict[geographic_resolution]]).frequency.sum().reset_index()
+    
+    incident_counts = pd.merge(incident_counts, popdf, on=[resolution_dict[geographic_resolution]], how="left")
+    
+    urban_codes = pd.read_csv(data_path / "misc" / "NCHSURCodes2013.csv", usecols=["FIPS code", "2013 code"])
+    urban_codes.rename(columns={"FIPS code":"FIPS", "2013 code": "urban_code"}, inplace=True)
+    urban_codes["FIPS"] = urban_codes.FIPS.apply(lambda x: str(x).rjust(5, "0"))
+    incident_counts = pd.merge(incident_counts, urban_codes, on="FIPS", how="left")
+    
     return incident_counts
 
 def add_race_ratio(census_df: pd.DataFrame, incident_df: pd.DataFrame, geographic_resolution: str):
@@ -212,7 +231,6 @@ def add_race_ratio(census_df: pd.DataFrame, incident_df: pd.DataFrame, geographi
     race_ratio = race_ratio.pivot(resolution_dict[geographic_resolution], columns="race").reset_index()
     race_ratio.columns = [resolution_dict[geographic_resolution], "black", "white"]
     race_ratio["bwratio"] = race_ratio["black"] / race_ratio["white"]
-
 
     incident_df = pd.merge(incident_df, race_ratio, on=resolution_dict[geographic_resolution], how="left")
 
@@ -234,7 +252,7 @@ def join_state_with_counties(df: pd.DataFrame, county_shp: gpd.GeoDataFrame, sta
     return county_shp.reset_index()
 
 
-def load_datasets(years: str, smooth: bool) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def load_datasets(years: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     # This is the county level census data. See "process_census_data.py".
     # FIPS code is loaded in as an 'object' to avoid integer conversion.
     subprocess.run(["python", str((data_processing_path / "process_census_data.py").resolve()), "--year", years])
@@ -244,10 +262,6 @@ def load_datasets(years: str, smooth: bool) -> Tuple[pd.DataFrame, pd.DataFrame,
     census_df = pd.read_csv(data_path / "census" / f"census_processed_{years}.csv", dtype={'FIPS': object}, index_col=0)
     nsduh_df = pd.read_csv(data_path / "NSDUH" / f"nsduh_processed_{years}.csv")
     nibrs_df = pd.read_csv(data_path / "NIBRS" / f"incidents_processed_{years}.csv", dtype={'FIPS': object}, index_col=0)
-
-    if smooth:
-        census_df = smooth_census(census_df)
-        nibrs_df = smooth_nibrs(nibrs_df)
 
     return census_df, nsduh_df, nibrs_df
 
@@ -323,12 +337,15 @@ def smooth_census(census_df: pd.DataFrame) -> gpd.GeoDataFrame:
             smoothed_df = smooth_census_state(census_df[census_df.state == state], county_shp)
     return smoothed_df
 
-def filter_urban(df: pd.DataFrame, urban_level: int) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def filter_urban(df: pd.DataFrame, urban_level: int, coverage_required: float = 0.5) -> Tuple[pd.DataFrame, pd.DataFrame]:
     urban_codes = pd.read_csv(data_path / "misc" / "NCHSURCodes2013.csv", usecols=["FIPS code", "2013 code"])
     urban_codes.rename(columns={"FIPS code":"FIPS", "2013 code": "urban_code"}, inplace=True)
     urban_codes["FIPS"] = urban_codes.FIPS.apply(lambda x: str(x).rjust(5, "0"))
     df = pd.merge(df, urban_codes, on="FIPS", how="left")
-    return df[df.urban_code > urban_level], df[df.urban_code <= urban_level]
+    coverage = pd.read_csv(data_path / "misc" / "county_coverage.csv", dtype=str)
+    df = pd.merge(df, coverage, on="FIPS", how="left")
+    condition = (df.urban_code <= urban_level) & (df.coverage.astype(float) > coverage_required)
+    return df[~condition], df[condition]
 
 def smooth_census_state(state_df: pd.DataFrame, county_gdf: gpd.GeoDataFrame) -> pd.DataFrame:
     state_df, urban_df = filter_urban(state_df, 2)
@@ -368,12 +385,17 @@ if __name__ == "__main__":
 
     for year in years:
         try:
-            census_df, nsduh_df, nibrs_df = load_datasets(str(year), args.smooth == "True")
+            census_df, nsduh_df, nibrs_df = load_datasets(str(year))
         except FileNotFoundError:
             warnings.warn(f"Data missing for {year}. Skipping.")
             continue
+        incident_df = nibrs_df.copy()
+        population_df = census_df.copy()
+        if args.smooth == "True":
+            census_df = smooth_census(census_df)
+            nibrs_df = smooth_nibrs(nibrs_df)
         bn = create_bn(nsduh_df, nibrs_df, census_df, args.resolution)
-        temp_df = get_selection_ratio(bn, nibrs_df, args.resolution, args.min_incidents)
+        temp_df = get_selection_ratio(bn, nibrs_df, incident_df, population_df, args.resolution, args.min_incidents)
         temp_df = add_race_ratio(census_df, temp_df, args.resolution)
         temp_df["year"] = year
         if selection_bias_df is not None:
