@@ -17,6 +17,8 @@ def map_with_slider(df: pd.DataFrame, time_col: str, value_col: str, log: bool =
 
     if log:
         df[value_col] = np.log10(df[value_col])
+    else:
+        df[value_col] = df[value_col] * 100_000
 
     data_slider = []
     for year in df[time_col].unique():

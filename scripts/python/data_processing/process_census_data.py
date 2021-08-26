@@ -146,9 +146,10 @@ def load_and_process_census_data(years: str) -> pd.DataFrame:
     df["FIPS"] = df["STATE"] + df["COUNTY"]
     df["YEAR"] += 2007 # Not quite sure why 2007 is the magic number.. but ¯\_(ツ)_/¯
     
-    df = reporting_coverage(df, "FIPS")
-    df.frequency = np.floor(df.frequency * df.coverage).astype(int)
-    df = df.drop(["coverage"], axis=1)
+    # if coverage:
+    #     df = reporting_coverage(df, "FIPS")
+    #     df.frequency = np.floor(df.frequency * df.coverage).astype(int)
+    #     df = df.drop(["coverage"], axis=1)
 
     df = df[df.AGE != "total"]
 
@@ -218,14 +219,12 @@ def load_and_process_census_data(years: str) -> pd.DataFrame:
 if __name__ == "__main__":
     parser=argparse.ArgumentParser()
 
-    parser.add_argument("--year", help="year, or year range.")
+    parser.add_argument("--year", help="year, or year range.", default=2019)
+    # parser.add_argument("--coverage", help="population scaled by coverage", default=False)
 
     args=parser.parse_args()
 
-    if not args.year:
-        print("No year specified. Defaulting to 2019")
-        df = load_and_process_census_data("2019")
-    else:
-        df = load_and_process_census_data(args.year)
+
+    df = load_and_process_census_data(str(args.year))
     year = args.year if args.year else "2019"
     df.to_csv(data_path / "census" / f"census_processed_{year}.csv")
