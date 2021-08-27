@@ -287,6 +287,8 @@ def reporting(state_df: gpd.GeoDataFrame) -> pd.DataFrame:
 
 
 def smooth_nibrs_state(state_df: pd.DataFrame, county_gdf: gpd.GeoDataFrame) -> pd.DataFrame:
+    if len(state_df.FIPS.unique()) == 1:
+        return state_df
     state = state_df.state.unique()[0]
     state_df, urban_df = filter_urban(state_df, 2)
     state_df.drop(["urban_code"], axis=1, inplace=True)
@@ -364,16 +366,8 @@ def smooth_census_state(state_df: pd.DataFrame, county_gdf: gpd.GeoDataFrame) ->
     state_df = pd.merge(state_df, joiner.reset_index(), how="left", on="FIPS")
     return state_df.append(urban_df).reset_index()
 
-if __name__ == "__main__":
-    parser=argparse.ArgumentParser()
 
-    parser.add_argument("--year", help="year, or year range.", default="2019")
-    parser.add_argument("--resolution", help="The geographic resolution", default="state")
-    parser.add_argument("--min_incidents", help="Minimum number of incidents to be included in the selection bias df.", default=0)
-    parser.add_argument("--smooth", help="Minimum number of incidents to be included in the selection bias df.", default=False)
-
-    args=parser.parse_args()
-
+def main(args):
     if "-" in args.year:
         years = args.year.split("-")
         years = range(int(years[0]), int(years[1]) + 1)
@@ -406,3 +400,16 @@ if __name__ == "__main__":
             selection_bias_df.to_csv(data_path / "output" / f"selection_ratio_{args.resolution}_{args.year}_smoothed.csv")
     else:
         selection_bias_df.to_csv(data_path / "output" / f"selection_ratio_{args.resolution}_{args.year}.csv")
+
+if __name__ == "__main__":
+    parser=argparse.ArgumentParser()
+
+    parser.add_argument("--year", help="year, or year range.", default="2019")
+    parser.add_argument("--resolution", help="The geographic resolution", default="state")
+    parser.add_argument("--min_incidents", help="Minimum number of incidents to be included in the selection bias df.", default=0)
+    parser.add_argument("--smooth", help="Minimum number of incidents to be included in the selection bias df.", default=False)
+    parser.add_argument("--month-interpolation", help="Whether to interpolate over months", default=False)
+
+    args=parser.parse_args()
+    
+    main(args)

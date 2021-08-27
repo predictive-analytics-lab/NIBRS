@@ -70,7 +70,7 @@ def join_years(years: str) -> pd.DataFrame:
     years = years.split("-")
     years = range(int(years[0]), int(years[1]) + 1)
     
-    assert min(years) >= 2015 and max(years) <= 2019, "Invalid year range. Valid range is: 2015-2019."
+    assert min(years) >= 2012 and max(years) <= 2019, "Invalid year range. Valid range is: 2012-2019."
 
     # Load NSDUH data
     nsduh_df = load_and_process_nsduh(years[0])

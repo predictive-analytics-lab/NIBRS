@@ -96,5 +96,5 @@ def map_with_slider(df: pd.DataFrame, time_col: str, value_col: str, log: bool =
 
 if __name__ == "__main__":
     data_path = Path(__file__).parents[3] / "data" / "output"
-    df = pd.read_csv(data_path / "selection_ratio_county_2016-2019_smoothed.csv", dtype={'FIPS': object})
+    df = pd.read_csv(data_path / "selection_ratio_county_2012-2019_smoothed.csv", dtype={'FIPS': object})
     map_with_slider(df, "year", "selection_ratio", log=True)

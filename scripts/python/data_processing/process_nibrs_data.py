@@ -80,11 +80,12 @@ def load_and_process_nibrs(years: str, resolution: str, hispanic: bool) -> Tuple
 
 
     nibrs_df = pd.read_csv(data_name, usecols=cols_to_use)
-    
+            
     nibrs_df = nibrs_df[disjunction(*[nibrs_df.data_year == yi for yi in years])]
     
     nibrs_df["age_num"] = nibrs_df.age_num.apply(age_cat)
-    
+    nibrs_df["sex_code"] = nibrs_df.sex_code.map({"F": "female", "M": "male"})
+
     nibrs_df.rename(columns={"sex_code": "sex", "age_num": "age", "arrest_type_name": "arrest_type"}, inplace=True)
 
     fips_ori_df = pd.read_csv(data_path / "misc" / "LEAIC.tsv", delimiter="\t",
