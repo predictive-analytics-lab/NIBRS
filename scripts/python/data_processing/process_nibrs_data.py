@@ -12,13 +12,13 @@ import glob
 import warnings
 
 data_path = Path(__file__).parent.parent.parent.parent / "data"
-script_name = lambda x: f"cannabis_agency_{x}_20210608.csv"
+data_name = data_path / "NIBRS"/ "raw" / "cannabis_allyears.csv"
 
 cols_to_use = [
-    "dm_offender_race_ethnicity",
-    "dm_offender_age",
-    "dm_offender_sex",
-    "arrest_type",
+    "race",
+    "age_num",
+    "sex_code",
+    "arrest_type_name",
     "ori",
     "data_year"
 ]
@@ -26,21 +26,30 @@ cols_to_use = [
 resolution_dict = {"state": "state",
                    "state_region": "state_region", "county": "FIPS", "agency":  "ori"}
 
-def load_and_combine_years(years: List[int]) -> pd.DataFrame:
-    """
-    This function takes a wildcard string, loading in matching dataframes, and combining the years into one CSV.
-    """
-    df = None
-    for year in years:
-        try:
-            if df is None:
-                df = pd.read_csv(data_path / "NIBRS" / "raw" / script_name(year), usecols=cols_to_use)
-            else:
-                df = df.append(pd.read_csv(data_path / "NIBRS" / "raw" / script_name(year), usecols=cols_to_use))
-        except FileNotFoundError:
-            years.remove(year)
-            print(f"No NIBRS data for {year}")
-    return df, years
+
+def age_cat(age: int) -> str:
+    if age < 18: return '12-17'
+    if age < 26: return '18-25'
+    if age < 35: return '26-34'
+    if age < 50: return '35-49'
+    if age >= 50: return '50+'
+    return np.nan
+
+# def load_and_combine_years(years: List[int]) -> pd.DataFrame:
+#     """
+#     This function takes a wildcard string, loading in matching dataframes, and combining the years into one CSV.
+#     """
+#     df = None
+#     for year in years:
+#         try:
+#             if df is None:
+#                 df = pd.read_csv(data_path / "NIBRS" / "raw" / script_name(year), usecols=cols_to_use)
+#             else:
+#                 df = df.append(pd.read_csv(data_path / "NIBRS" / "raw" / script_name(year), usecols=cols_to_use))
+#         except FileNotFoundError:
+#             years.remove(year)
+#             print(f"No NIBRS data for {year}")
+#     return df, years
 
 def disjunction(*conditions):
     """
@@ -48,7 +57,7 @@ def disjunction(*conditions):
     """
     return functools.reduce(np.logical_or, conditions)
 
-def load_and_process_nibrs(years: str, resolution: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def load_and_process_nibrs(years: str, resolution: str, hispanic: bool) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     This function loads the current nibrs dataset, and processes it.
     Additionally, it adds the FIPS code and state subregion code to the data.
@@ -70,20 +79,13 @@ def load_and_process_nibrs(years: str, resolution: str) -> Tuple[pd.DataFrame, p
             print("invalid year format. Run appropriate SQL script.")
 
 
-    nibrs_df, years = load_and_combine_years(years)
-        
-    if len(years) == 0:
-        return None, None
+    nibrs_df = pd.read_csv(data_name, usecols=cols_to_use)
     
     nibrs_df = nibrs_df[disjunction(*[nibrs_df.data_year == yi for yi in years])]
-
-    nibrs_df.rename(columns={
-        "dm_offender_race_ethnicity": "race",
-        "dm_offender_age": "age",
-        "dm_offender_sex": "sex"
-    }, inplace=True)
-
-    nibrs_df = nibrs_df[nibrs_df["race"] != "hispanic/latino"]
+    
+    nibrs_df["age_num"] = nibrs_df.age_num.apply(age_cat)
+    
+    nibrs_df.rename(columns={"sex_code": "sex", "age_num": "age", "arrest_type_name": "arrest_type"}, inplace=True)
 
     fips_ori_df = pd.read_csv(data_path / "misc" / "LEAIC.tsv", delimiter="\t",
                             usecols=["ORI9", "FIPS"], dtype={'FIPS': object})
@@ -118,10 +120,11 @@ if __name__ == "__main__":
 
     parser.add_argument("--year", help="year, or year range.", default="2019")
     parser.add_argument("--resolution", help="Geographic resolution to aggregate incidents over.", default="state")
+    parser.add_argument("--hispanic", help="Whether to include hispanic individuals", default=False)
 
     args=parser.parse_args()
 
-    df, df_a = load_and_process_nibrs(args.year, args.resolution)
+    df, df_a = load_and_process_nibrs(args.year, args.resolution, args.hispanic == True)
     year = args.year if args.year else "2019"
     if df is not None:
         df.to_csv(data_path / "NIBRS" / f"incidents_processed_{year}.csv")

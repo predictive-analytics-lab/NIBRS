@@ -3,13 +3,19 @@ from typing import Generator, List, Optional
 import pandas as pd
 from pathlib import Path
 from tqdm import tqdm
+from difflib import SequenceMatcher
 
 data_dir = Path(__file__).resolve().parents[3] / "data_downloading" / "downloads"
+output_dir = Path(__file__).resolve().parents[3] / "data" / "NIBRS"
 
 def search_filename(name: str, dir: Path) -> Path:
     for filename in dir.iterdir():
-        if name in filename.name.lower():
-            return filename
+        if name is "agencies":
+            if f"{name}.csv" in filename.name.lower():
+                return filename
+        else:
+            if f"nibrs_{name}.csv" in filename.name.lower():
+                return filename
 
 def query_one_state_year(year_dir: Path) -> pd.DataFrame:
     """Combine a single year-state combination into the desired df form."""
@@ -137,4 +143,5 @@ def query_all(downloads_dir: Path) -> pd.DataFrame:
 if __name__ == "__main__":
     #df = query_one_state_year(data_dir / "NE-2019") # next(data_dir.iterdir()))
     df = query_all(data_dir)
+    df.to_csv(output_dir / "raw" / "cannabis_allyears.csv")
 
