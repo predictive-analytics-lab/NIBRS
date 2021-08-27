@@ -60,19 +60,21 @@ state_abbreviations = [s.split(",")[1].strip() for s in """Alabama, AL
 
 
 def download_data():
-    years = [2015, 2016, 2017, 2018, 2019]
+    years = range(2012, 2020)
     states = state_abbreviations
     download_location = Path(__file__).parent / 'downloads'
     for year in years:
         for state in states:
             if (download_location / f"{state}-{year}").exists():
-                pass
+                print(f"skipping {state} {year}")
+                continue
+            print(f"downloading {state} {year}")
             r = requests.get(get_download_url(state, year))
             if r.status_code != 200:
                 continue
             z = zipfile.ZipFile(io.BytesIO(r.content))
             z.extractall(download_location / f"{state}-{year}")
-            sleep(10)
+            sleep(1)
 
 
 def get_download_url(state: str, year: int) -> str:

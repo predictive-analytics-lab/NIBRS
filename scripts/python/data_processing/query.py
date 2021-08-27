@@ -10,7 +10,11 @@ output_dir = Path(__file__).resolve().parents[3] / "data" / "NIBRS"
 
 def search_filename(name: str, dir: Path) -> Path:
     for filename in dir.iterdir():
+<<<<<<< HEAD
         if name is "agencies":
+=======
+        if name == "agencies":
+>>>>>>> ede9829016baa86cede73a73607ebfc628b22893
             if f"{name}.csv" in filename.name.lower():
                 return filename
         else:
@@ -118,13 +122,13 @@ def query_one_state_year(year_dir: Path) -> pd.DataFrame:
         (main_df['other_offense'] == False) &
         # (main_df['location_count'] == 1) &
         (main_df['other_criminal_act_count'] == 0) &
-        (main_df['ethnicity_id'] != 1) &
+        # (main_df['ethnicity_id'] != 1) &
         (main_df['race_id'].isin([1, 2])) &
         (main_df['sex_code'].isin(["M", "F"])) &
         (~main_df['age_num'].isna()) &
-        (main_df['age_num'] > 11) &
-        (main_df['cannabis_count'] > 0) &
-        (main_df['unique_drug_type_count'] == 1)
+        (main_df['age_num'] > 11) #&
+        # (main_df['cannabis_count'] > 0) &
+        # (main_df['unique_drug_type_count'] == 1)
     ]
 
     main_df = main_df.drop(columns=["nibrs_month_id", "offender_id", "incident_id", "race_id", "ethnicity_id", "nibrs_month_id"])
@@ -134,7 +138,6 @@ def query_one_state_year(year_dir: Path) -> pd.DataFrame:
 def query_all(downloads_dir: Path) -> pd.DataFrame:
     combined_df = pd.DataFrame()
     for sy_dir in tqdm(list(data_dir.iterdir())):
-        data_year = sy_dir.stem.split("-")[-1]
         df = query_one_state_year(sy_dir)
         combined_df = combined_df.append(df)
     return combined_df
