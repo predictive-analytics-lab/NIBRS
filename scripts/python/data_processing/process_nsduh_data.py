@@ -41,6 +41,18 @@ age_dict = {
     5: "50+",
 }
 
+poverty_dict = {
+    1: "living in poverty",
+    2: "income up to 2x poverty threshold",
+    3: "income more than 2x poverty threshold"
+}
+
+urbancounty_dict = {
+    1: "urban",
+    2: "rural",
+    3: "rural"
+}
+
 
 def usage(n):
     if n <= 30:
@@ -89,12 +101,16 @@ def load_and_process_nsduh(year: int) -> pd.DataFrame:
     nsduh_df.rename(columns={
         "NEWRACE2": "race",
         "CATAG3": "age",
-        "IRSEX": "sex"
+        "IRSEX": "sex",
+        "POVERTY3": "poverty",
+        "COUTYP4": "urbancounty"
     }, inplace=True)
 
     nsduh_df["race"] = nsduh_df.race.map(race_dict)
     nsduh_df["age"] = nsduh_df.age.map(age_dict)
     nsduh_df["sex"] = nsduh_df.sex.map(sex_dict)
+    nsduh_df["poverty"] = nsduh_df.poverty.map(poverty_dict)
+    nsduh_df["urbancounty"] = nsduh_df.urbancounty.map(urbancounty_dict)
     nsduh_df["MJBINARY"] = nsduh_df.MJDAY30A.map(binary_usage)
     nsduh_df["MJDAY30A"] = nsduh_df.MJDAY30A.map(usage)
     nsduh_df = nsduh_df[nsduh_df.race != "other/mixed"]
