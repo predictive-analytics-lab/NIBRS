@@ -48,9 +48,9 @@ poverty_dict = {
 }
 
 urbancounty_dict = {
-    1: "urban",
-    2: "rural",
-    3: "rural"
+    1: "Large metro",
+    2: "Small metro",
+    3: "Nonmetro"
 }
 
 
