@@ -18,10 +18,7 @@ df <- df %>%
 
 df %>% count(Description, urban)
 
-# load list of all counties
-ct <- read_csv("https://www2.census.gov/geo/docs/maps-data/data/rel/2010_Census_Tract_to_2010_PUMA.txt")
-
-# assign numbers to states
+# assign numeric codes to states
 state_codes <- read_csv(here('scripts', 'R', 'downloaded_data', 'state_codes.csv'))
 
 df %>%
