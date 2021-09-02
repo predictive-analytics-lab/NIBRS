@@ -178,7 +178,7 @@ def create_bn(nsduh_df: pd.DataFrame, nibrs_df: pd.DataFrame, census_df: pd.Data
 
 ###### Conditioning #######
 
-def get_selection_by_vars(bn: DAG, race_level: str, resolution: str, resolution_name: str):
+def selection_by_race(bn: DAG, race_level: str, resolution: str, resolution_name: str, variable: str = "incident"):
     local_bn = bn.copy()
 
     def _set_cpt(node: str, level: str) -> np.ndarray:
@@ -190,41 +190,46 @@ def get_selection_by_vars(bn: DAG, race_level: str, resolution: str, resolution_
         resolution, resolution_name)
     local_bn.get_node("race_pop")["CPD"].array = _set_cpt(
         "race_pop", race_level)
-    return collapse_posterior(local_bn, "incident")[1]
+    return collapse_posterior(local_bn, variable)[1]
 
 
-def get_ratio_by_vars(bn: DAG, resolution: str, resolution_name: str):
-    return get_selection_by_vars(bn, "black", resolution, resolution_name) / get_selection_by_vars(bn, "white", resolution, resolution_name)
+def get_incident_ratio(bn: DAG, resolution: str, resolution_name: str):
+    return selection_by_race(bn, "black", resolution, resolution_name) - selection_by_race(bn, "white", resolution, resolution_name)
 
 
-def get_selection_ratio(dag: DAG, nibrs_df: pd.DataFrame, incident_df: pd.DataFrame, census_df: pd.DataFrame, geographic_resolution: str, min_incidents: int = 0) -> pd.DataFrame:
+def selection_ratio(dag: DAG, resolution: str, census_df: pd.DataFrame) -> pd.DataFrame:
+    area_levels = list(dag.get_node(resolution)["levels"])
     
-    non_smoothed_counts = incident_df.groupby(resolution_dict[geographic_resolution]).incidents.sum().reset_index()
-
-    incident_counts = nibrs_df.groupby(resolution_dict[geographic_resolution]).incidents.sum().reset_index()
-
-    incident_counts = incident_counts[incident_counts.incidents >= min_incidents]
-
-    incident_counts["selection_ratio"] = incident_counts[resolution_dict[geographic_resolution]].apply(lambda x: get_ratio_by_vars(dag, geographic_resolution, x))
+    black_prob = [selection_by_race(dag, "black", resolution, x) for x in area_levels]
+    white_prob = [selection_by_race(dag, "white", resolution, x) for x in area_levels]
+        
+    black_count = [n_users(dag, census_df, resolution, x, "black") for x in area_levels]
+    white_count = [n_users(dag, census_df, resolution, x, "white") for x in area_levels]
     
-    incident_counts.drop(columns=["incidents"], inplace=True)
+    srs, cis = [wilson_selection(bpi, bci, wpi, wci) for bpi, bci, wpi, wci in zip(black_prob, black_count, white_prob, white_count)]
+
+    return pd.DataFrame([area_levels, srs, cis], columns=[resolution_dict[resolution], "selection_ratio", "ci"])
+
+def add_extra_information(selection_bias_df: pd.DataFrame, nibrs_df: pd.DataFrame, census_df: pd.DataFrame, geographic_resolution: str) -> pd.DataFrame:
     
-    incident_counts = pd.merge(incident_counts, non_smoothed_counts, on=[resolution_dict[geographic_resolution]], how="left")
+    incidents = nibrs_df.groupby(resolution_dict[geographic_resolution]).incidents.sum().reset_index()
     
+    # Remove agency duplicates
     census_df.drop(columns=["ori"], inplace=True)
-    
     census_df.drop_duplicates(inplace=True)
         
     popdf = census_df.groupby([resolution_dict[geographic_resolution]]).frequency.sum().reset_index()
     
-    incident_counts = pd.merge(incident_counts, popdf, on=[resolution_dict[geographic_resolution]], how="left")
+    if geographic_resolution == "county":
+        urban_codes = pd.read_csv(data_path / "misc" / "NCHSURCodes2013.csv", usecols=["FIPS code", "2013 code"])
+        urban_codes.rename(columns={"FIPS code":"FIPS", "2013 code": "urban_code"}, inplace=True)
+        urban_codes["FIPS"] = urban_codes.FIPS.apply(lambda x: str(x).rjust(5, "0"))
+        selection_bias_df = selection_bias_df.merge(urban_codes, how="left", on="FIPS")
     
-    urban_codes = pd.read_csv(data_path / "misc" / "NCHSURCodes2013.csv", usecols=["FIPS code", "2013 code"])
-    urban_codes.rename(columns={"FIPS code":"FIPS", "2013 code": "urban_code"}, inplace=True)
-    urban_codes["FIPS"] = urban_codes.FIPS.apply(lambda x: str(x).rjust(5, "0"))
-    incident_counts = pd.merge(incident_counts, urban_codes, on="FIPS", how="left")
-    
-    return incident_counts
+    selection_bias_df = selection_bias_df.merge(incidents, how="left", on=resolution_dict[geographic_resolution])
+    selection_bias_df = selection_bias_df.merge(popdf, how="left", on=resolution_dict[geographic_resolution])
+
+    return selection_bias_df
 
 def add_race_ratio(census_df: pd.DataFrame, incident_df: pd.DataFrame, geographic_resolution: str):
     race_ratio = census_df.groupby([resolution_dict[geographic_resolution], "race"]).frequency.sum().reset_index()
@@ -366,6 +371,39 @@ def smooth_census_state(state_df: pd.DataFrame, county_gdf: gpd.GeoDataFrame) ->
     state_df = pd.merge(state_df, joiner.reset_index(), how="left", on="FIPS")
     return state_df.append(urban_df).reset_index()
 
+def n_users(bn: DAG, census_df: pd.DataFrame, resolution: str, area: str, race: str) -> int:
+    p_race_area = selection_by_race(bn, race, resolution, area, "uses_cannabis")
+    filtered = census_df[(census_df[resolution_dict[resolution]] == area) & (census_df.race == race)]
+    filtered = filtered.drop_duplicates()
+    return p_race_area * filtered.frequency.sum()
+
+def wilson_error(probability: float, count: int, z = 1.96) -> Tuple[float, float]:
+    """
+    Wilson score interval - modified from: https://www.mikulskibartosz.name/wilson-score-in-python-example/
+    
+    param probability: The probability of the event
+    param count: The number of events
+    param z: The z-value
+    
+    return: The lower and upper bound of the Wilson score interval
+    """
+    denominator = 1 + z**2/count
+    centre_adjusted_probability = probability + z*z / (2*count)
+    adjusted_standard_deviation = np.sqrt((probability*(1 - probability) + z*z / (4*count)) / count)
+    
+    # lower_bound = (centre_adjusted_probability - z*adjusted_standard_deviation) / denominator
+    # upper_bound = (centre_adjusted_probability + z*adjusted_standard_deviation) / denominator
+    return centre_adjusted_probability / denominator, z*adjusted_standard_deviation / denominator
+
+def wilson_selection(prob_g1: float, count_g1: int, prob_g2: float, count_g2: int) -> Tuple[float, float]:
+    """
+    Get the adjusted selection bias and wilson cis.
+    """
+    p1, e1 = wilson_error(prob_g1, count_g1)
+    p2, e2 = wilson_error(prob_g2, count_g2)
+    ci = np.sqrt((e1 / p1)**2 + (e2 / p2)**2)
+    return p1 / p2, ci
+
 
 def main(args):
     if "-" in args.year:
@@ -389,7 +427,8 @@ def main(args):
             census_df = smooth_census(census_df)
             nibrs_df = smooth_nibrs(nibrs_df)
         bn = create_bn(nsduh_df, nibrs_df, census_df, args.resolution)
-        temp_df = get_selection_ratio(bn, nibrs_df, incident_df, population_df, args.resolution, args.min_incidents)
+        temp_df = selection_ratio(bn, args.resolution, census_df)
+        temp_df = add_extra_information(temp_df, incident_df, population_df, args.resolution)
         temp_df = add_race_ratio(census_df, temp_df, args.resolution)
         temp_df["year"] = year
         if selection_bias_df is not None:
@@ -408,7 +447,6 @@ if __name__ == "__main__":
     parser.add_argument("--resolution", help="The geographic resolution", default="state")
     parser.add_argument("--min_incidents", help="Minimum number of incidents to be included in the selection bias df.", default=0)
     parser.add_argument("--smooth", help="Minimum number of incidents to be included in the selection bias df.", default=False)
-    parser.add_argument("--month-interpolation", help="Whether to interpolate over months", default=False)
 
     args=parser.parse_args()
     
