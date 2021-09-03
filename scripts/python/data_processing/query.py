@@ -123,8 +123,8 @@ def query_one_state_year(year_dir: Path) -> pd.DataFrame:
         (main_df['sex_code'].isin(["M", "F"])) &
         (~main_df['age_num'].isna()) &
         (main_df['age_num'] > 11) &
-        (main_df['cannabis_count'] > 0)
-        # (main_df['unique_drug_type_count'] == 1)
+        # (main_df['cannabis_count'] > 0)
+        (main_df['unique_drug_type_count'] >= 1)
     ]
 
     main_df = main_df.drop(columns=["nibrs_month_id", "offender_id", "incident_id", "race_id", "ethnicity_id", "nibrs_month_id"])
@@ -142,5 +142,5 @@ def query_all(downloads_dir: Path) -> pd.DataFrame:
 if __name__ == "__main__":
     #df = query_one_state_year(data_dir / "NE-2019") # next(data_dir.iterdir()))
     df = query_all(data_dir)
-    df.to_csv(output_dir / "raw" / "cannabis_allyears.csv")
+    df.to_csv(output_dir / "raw" / "alldrugs_allyears.csv")
 

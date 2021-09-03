@@ -12,7 +12,7 @@ import glob
 import warnings
 
 data_path = Path(__file__).parent.parent.parent.parent / "data"
-data_name = data_path / "NIBRS"/ "raw" / "cannabis_allyears.csv"
+data_name = data_path / "NIBRS"/ "raw" / "alldrugs_allyears.csv"
 
 cols_to_use = [
     "race",

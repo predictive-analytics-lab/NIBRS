@@ -52,11 +52,11 @@ data_to_dag_names = {
 
 def create_dag(drug_use_df: pd.DataFrame, census_df: pd.DataFrame, resolution: Literal['state', 'state_region', 'county']):
     dag = DAG.from_modelstring(
-        f"[incident|age_pop:race_pop:sex_pop:{resolution}:uses_cannabis][uses_cannabis|age_pop:race_pop:sex_pop][race_pop|age_pop:sex_pop:{resolution}][age_pop|sex_pop:{resolution}][sex_pop|{resolution}][{resolution}]")
+        f"[incident|age_pop:race_pop:sex_pop:{resolution}:uses_drug][uses_drug|age_pop:race_pop:sex_pop][race_pop|age_pop:sex_pop:{resolution}][age_pop|sex_pop:{resolution}][sex_pop|{resolution}][{resolution}]")
     dag.get_node("sex_pop")["levels"] = drug_use_df.sex.unique().tolist()
     dag.get_node("age_pop")["levels"] = drug_use_df.age.unique().tolist()
     dag.get_node("race_pop")["levels"] = drug_use_df.race.unique().tolist()
-    dag.get_node("uses_cannabis")["levels"] = ["n", "y"]
+    dag.get_node("uses_drug")["levels"] = ["n", "y"]
     dag.get_node("incident")["levels"] = ["n", "y"]
     dag.get_node(resolution)[
         "levels"] = census_df[resolution_dict[resolution]].unique().tolist()
@@ -66,12 +66,12 @@ def create_dag(drug_use_df: pd.DataFrame, census_df: pd.DataFrame, resolution: L
 # Function to create cannabis usage cpt.
 
 def weighted_average_aggregate(group: pd.DataFrame):
-    return (group["MJDAY30A"] * group["ANALWT_C"]).sum() / 30
+    return (group["usage_30day"] * group["ANALWT_C"]).sum() / 30
 
 def get_usage_cpt(dag: DAG, drug_use_df: pd.DataFrame, usage_name: str):
     group_weights = drug_use_df.groupby(["age", "race", "sex", usage_name])["ANALWT_C"].sum() / drug_use_df.groupby(["age", "race", "sex"])["ANALWT_C"].sum()
     group_weights = group_weights.reset_index()
-    group_weights = group_weights.groupby(["age", "race", "sex"]).apply(weighted_average_aggregate).to_frame("MJDAY").reset_index()
+    group_weights = group_weights.groupby(["age", "race", "sex"]).apply(weighted_average_aggregate).to_frame("daily_use").reset_index()
     columns = [f"{dem.lower()}_pop" for dem in ["age", "race", "sex"]]
     tuples = list(product(*[dag.get_node(col)["levels"] for col in columns]))
     new_index = pd.MultiIndex.from_tuples(tuples, names=["age", "race", "sex"])
@@ -84,7 +84,7 @@ def get_usage_cpt(dag: DAG, drug_use_df: pd.DataFrame, usage_name: str):
 
 
 def get_incident_cpt(census_df: pd.DataFrame, nsduh_df: pd.DataFrame, nibrs_df: pd.DataFrame, dag: DAG, resolution: str, dem_order: List[str] = ["age", "race", "sex"]):
-    cross = pd.crosstab(nsduh_df.MJDAY30A, [
+    cross = pd.crosstab(nsduh_df.usage_30day, [
                         nsduh_df[col] for col in dem_order], normalize="columns")
     cross_mult = cross.multiply(cross.index, axis="rows")
     cross_sum = cross_mult.sum(axis="rows") / 30
@@ -152,7 +152,7 @@ def create_bn(nsduh_df: pd.DataFrame, nibrs_df: pd.DataFrame, census_df: pd.Data
 
     # Populate Cannabis Usage CPT
 
-    populate_cpd(dag, "uses_cannabis", get_usage_cpt(dag, nsduh_df, "MJDAY30A"))
+    populate_cpd(dag, "uses_drug", get_usage_cpt(dag, nsduh_df, "usage_30day"))
 
     # Populate demographic CPTs.
 
@@ -252,15 +252,15 @@ def join_state_with_counties(df: pd.DataFrame, county_shp: gpd.GeoDataFrame, sta
     return county_shp.reset_index()
 
 
-def load_datasets(years: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def load_datasets(years: str, drug: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     # This is the county level census data. See "process_census_data.py".
     # FIPS code is loaded in as an 'object' to avoid integer conversion.
     subprocess.run(["python", str((data_processing_path / "process_census_data.py").resolve()), "--year", years])
-    subprocess.run(["python", str((data_processing_path / "process_nsduh_data.py").resolve()), "--year", years])
+    subprocess.run(["python", str((data_processing_path / "process_nsduh_data.py").resolve()), "--year", years, "--drug", drug])
     subprocess.run(["python", str((data_processing_path / "process_nibrs_data.py").resolve()), "--year", years, "--resolution", "county"])
 
     census_df = pd.read_csv(data_path / "census" / f"census_processed_{years}.csv", dtype={'FIPS': object}, index_col=0)
-    nsduh_df = pd.read_csv(data_path / "NSDUH" / f"nsduh_processed_{years}.csv")
+    nsduh_df = pd.read_csv(data_path / "NSDUH" / f"nsduh_processed_{drug}_{years}.csv")
     nibrs_df = pd.read_csv(data_path / "NIBRS" / f"incidents_processed_{years}.csv", dtype={'FIPS': object}, index_col=0)
 
     return census_df, nsduh_df, nibrs_df
@@ -379,7 +379,7 @@ def main(args):
 
     for year in years:
         try:
-            census_df, nsduh_df, nibrs_df = load_datasets(str(year))
+            census_df, nsduh_df, nibrs_df = load_datasets(str(year), args.drug)
         except FileNotFoundError:
             warnings.warn(f"Data missing for {year}. Skipping.")
             continue
@@ -409,6 +409,7 @@ if __name__ == "__main__":
     parser.add_argument("--min_incidents", help="Minimum number of incidents to be included in the selection bias df.", default=0)
     parser.add_argument("--smooth", help="Minimum number of incidents to be included in the selection bias df.", default=False)
     parser.add_argument("--month-interpolation", help="Whether to interpolate over months", default=False)
+    parser.add_argument("--drug", help="Drug type", default="cannabis")
 
     args=parser.parse_args()
     
