@@ -14,9 +14,6 @@ import numpy as np
 import pandas as pd
 import geopandas as gpd
 from libpysal.weights import Queen
-import baynet
-from baynet import DAG
-from baynet.interventions import collapse_posterior
 import seaborn as sns
 from pathlib import Path
 from itertools import product
@@ -37,181 +34,35 @@ data_path = base_path / "data"
 resolution_dict = {"state": "state",
                    "state_region": "state_region", "county": "FIPS", "agency":  "ori"}
 
-data_to_dag_names = {
-    "FIPS": "county",
-    "state_region": "state_region",
-    "ori": "agency",
-    "state": "state",
-    "age": "age_pop",
-    "race": "race_pop",
-    "sex": "sex_pop",
-}
-
-
-############ HELPER FUNCTIONS #########
-
-def create_dag(drug_use_df: pd.DataFrame, census_df: pd.DataFrame, resolution: Literal['state', 'state_region', 'county']):
-    dag = DAG.from_modelstring(
-        f"[incident|age_pop:race_pop:sex_pop:{resolution}:uses_cannabis][uses_cannabis|age_pop:race_pop:sex_pop][race_pop|age_pop:sex_pop:{resolution}][age_pop|sex_pop:{resolution}][sex_pop|{resolution}][{resolution}]")
-    dag.get_node("sex_pop")["levels"] = drug_use_df.sex.unique().tolist()
-    dag.get_node("age_pop")["levels"] = drug_use_df.age.unique().tolist()
-    dag.get_node("race_pop")["levels"] = drug_use_df.race.unique().tolist()
-    dag.get_node("uses_cannabis")["levels"] = ["n", "y"]
-    dag.get_node("incident")["levels"] = ["n", "y"]
-    dag.get_node(resolution)[
-        "levels"] = census_df[resolution_dict[resolution]].unique().tolist()
-    return dag
-
-
-# Function to create cannabis usage cpt.
-
-def weighted_average_aggregate(group: pd.DataFrame):
-    return (group["MJDAY30A"] * group["ANALWT_C"]).sum() / 30
-
-def get_usage_cpt(dag: DAG, drug_use_df: pd.DataFrame, usage_name: str):
-    group_weights = drug_use_df.groupby(["age", "race", "sex", usage_name])["ANALWT_C"].sum() / drug_use_df.groupby(["age", "race", "sex"])["ANALWT_C"].sum()
-    group_weights = group_weights.reset_index()
-    group_weights = group_weights.groupby(["age", "race", "sex"]).apply(weighted_average_aggregate).to_frame("MJDAY").reset_index()
-    columns = [f"{dem.lower()}_pop" for dem in ["age", "race", "sex"]]
-    tuples = list(product(*[dag.get_node(col)["levels"] for col in columns]))
-    new_index = pd.MultiIndex.from_tuples(tuples, names=["age", "race", "sex"])
-    cross_sum = group_weights.groupby(["age", "race", "sex"]).mean().reindex(new_index)
-    x = cross_sum.squeeze().to_xarray()
-    neg_x = 1 - x.values.copy()
-    return np.stack([neg_x, x.copy()], axis=-1)
-
-# Function to selection "incident" cpt.
-
-
-def get_incident_cpt(census_df: pd.DataFrame, nsduh_df: pd.DataFrame, nibrs_df: pd.DataFrame, dag: DAG, resolution: str, dem_order: List[str] = ["age", "race", "sex"]):
-    cross = pd.crosstab(nsduh_df.MJDAY30A, [
-                        nsduh_df[col] for col in dem_order], normalize="columns")
-    cross_mult = cross.multiply(cross.index, axis="rows")
-    cross_sum = cross_mult.sum(axis="rows") / 30
-    expected_incidents = (census_df.groupby(sorted(
-        dem_order + [resolution_dict[resolution]], key=str.casefold))["frequency"].sum() * cross_sum * 365)
-    incidents = nibrs_df.groupby(sorted(dem_order + [resolution_dict[resolution]], key=str.casefold)).incidents.sum()
-    inc_cpt = incidents / expected_incidents
-    columns = sorted(
-        [f"{dem.lower()}_pop" for dem in dem_order] + [resolution])
-    tuples = list(product(*[dag.get_node(col)["levels"] for col in columns]))
-    new_index = pd.MultiIndex.from_tuples(tuples, names=columns)
-    inc_cpt = inc_cpt[new_index]
-    dims = inc_cpt.to_xarray().values.shape
-    x = inc_cpt.values.reshape(dims)
-    x = np.stack([np.zeros(x.shape), x.copy()], axis=-1)
-    x = np.nan_to_num(x)
-    neg_x = 1 - x.copy()
-    return np.stack([neg_x, x.copy()], axis=-1)
-
-
-# Function to create the CPT of NODE given PARENTS
-
-def get_cpd(census_df: pd.DataFrame, dag: DAG, child, parents, norm=True):
-    parents = sorted(parents, key=str.casefold)
-    grouped = census_df.groupby([*parents, child])["frequency"].sum()
-    if not norm:
-        return grouped
-    if parents:
-        denom = census_df.groupby([*parents])["frequency"].sum()
-        tuples = list(product(
-            *[dag.get_node(data_to_dag_names[col])["levels"] for col in [*parents, child]]))
-        new_index = pd.MultiIndex.from_tuples(tuples, names=[*parents, child])
-        grouped = grouped[new_index]
-        if len(parents) > 1:
-            tuples_denom = list(product(
-                *[dag.get_node(data_to_dag_names[col])["levels"] for col in [*parents]]))
-            new_index_denom = pd.MultiIndex.from_tuples(
-                tuples_denom, names=[*parents])
-            denom = denom[new_index_denom]
-        else:
-            denom = denom[dag.get_node(
-                data_to_dag_names[parents[0]])["levels"]]
-        dims = (grouped / denom).to_xarray().values.shape
-        return (grouped / denom).values.reshape(dims)
-    else:
-        grouped = grouped[dag.get_node(data_to_dag_names[child])["levels"]]
-        return (grouped / census_df["frequency"].sum()).values
-
-
-def populate_cpd(dag: DAG, node: str, cpt: np.ndarray):
-    dag.get_node(node)["CPD"] = baynet.parameters.ConditionalProbabilityTable(
-        dag.get_node(node))
-    dag.get_node(node)["CPD"].parents = sorted([p["name"] for p in dag.get_ancestors(
-        node, only_parents=True)])
-    dag.get_node(node)["CPD"].array = cpt
-    dag.get_node(node)["CPD"].rescale_probabilities()
-
-############ DAG CREATION #############
-
-# Create DAG structure and Initialize levels.
-
-def create_bn(nsduh_df: pd.DataFrame, nibrs_df: pd.DataFrame, census_df: pd.DataFrame, geographic_resolution: str) -> DAG:
-
-    dag = create_dag(nsduh_df, census_df, resolution=geographic_resolution)
-
-    # Populate Cannabis Usage CPT
-
-    populate_cpd(dag, "uses_cannabis", get_usage_cpt(dag, nsduh_df, "MJDAY30A"))
-
-    # Populate demographic CPTs.
-
-    populate_cpd(dag, "race_pop", get_cpd(census_df, dag,
-                "race", ["age", "sex", resolution_dict[geographic_resolution]]))
-
-
-    populate_cpd(dag, "sex_pop", get_cpd(census_df, dag,
-                "sex", [resolution_dict[geographic_resolution]]))
-
-    populate_cpd(dag, "age_pop", get_cpd(census_df, dag,
-                "age", ["sex", resolution_dict[geographic_resolution]]))
-
-    populate_cpd(dag, geographic_resolution, get_cpd(census_df, dag,
-                resolution_dict[geographic_resolution], []))
-
-    # Populate Incident CPT
-
-    populate_cpd(dag, "incident", get_incident_cpt(census_df, nsduh_df,
-                nibrs_df, dag, geographic_resolution))
-    return dag
-
 
 ###### Conditioning #######
 
-def selection_by_race(bn: DAG, race_level: str, resolution: str, resolution_name: str, variable: str = "incident"):
-    local_bn = bn.copy()
 
-    def _set_cpt(node: str, level: str) -> np.ndarray:
-        idx = local_bn.get_node(node)["levels"].index(level)
-        array = np.zeros(local_bn.get_node(node)["CPD"].array.shape)
-        array[..., idx] = 1
-        return array
-    local_bn.get_node(resolution)["CPD"].array = _set_cpt(
-        resolution, resolution_name)
-    local_bn.get_node("race_pop")["CPD"].array = _set_cpt(
-        "race_pop", race_level)
-    return collapse_posterior(local_bn, variable)[1]
-
-
-def get_incident_ratio(bn: DAG, resolution: str, resolution_name: str):
-    return selection_by_race(bn, "black", resolution, resolution_name) - selection_by_race(bn, "white", resolution, resolution_name)
+def incident_users(nibrs_df: pd.DataFrame, census_df: pd.DataFrame, nsduh_df: pd.DataFrame, resolution: str) -> pd.DataFrame:
+    census_df = census_df[census_df.FIPS.isin(nibrs_df.FIPS)]
+    census_df = census_df[["FIPS", "race", "age", "sex", "frequency"]]
+    census_df = census_df.drop_duplicates()
+    cross = pd.crosstab(nsduh_df.MJDAY30A, nsduh_df.race, normalize="columns")
+    cross_mult = cross.multiply(cross.index, axis="rows")
+    cross_sum = cross_mult.sum(axis="rows") / 30
+    users = (census_df.groupby(sorted(["race"] + [resolution_dict[resolution]], key=str.casefold))["frequency"].sum() * cross_sum).to_frame("user_count").reset_index()
+    incidents = nibrs_df.groupby(sorted(["race"] + [resolution_dict[resolution]], key=str.casefold)).incidents.sum().to_frame("incident_count").reset_index()
+    users = users.pivot(index="FIPS", columns="race", values="user_count")
+    incidents = incidents.pivot(index="FIPS", columns="race", values="incident_count")
+    return incidents.merge(users, on="FIPS") 
 
 
-def selection_ratio(dag: DAG, resolution: str, census_df: pd.DataFrame) -> pd.DataFrame:
-    area_levels = list(dag.get_node(resolution)["levels"])
-    
-    black_prob = [selection_by_race(dag, "black", resolution, x) for x in area_levels]
-    white_prob = [selection_by_race(dag, "white", resolution, x) for x in area_levels]
-        
-    black_count = [n_users(dag, census_df, resolution, x, "black") for x in area_levels]
-    white_count = [n_users(dag, census_df, resolution, x, "white") for x in area_levels]
-    
-    srs, cis = [wilson_selection(bpi, bci, wpi, wci) for bpi, bci, wpi, wci in zip(black_prob, black_count, white_prob, white_count)]
-
-    return pd.DataFrame([area_levels, srs, cis], columns=[resolution_dict[resolution], "selection_ratio", "ci"])
+def selection_ratio(incident_user_df: pd.DataFrame) -> pd.DataFrame:
+    incident_user_df = incident_user_df.fillna(0).reset_index()
+    incident_user_df = incident_user_df[incident_user_df.black_y > 0]
+    incident_user_df = incident_user_df[incident_user_df.white_y > 0]
+    incident_user_df["result"] = incident_user_df.apply(lambda x: wilson_selection(x["black_x"], x["black_y"], x["white_x"], x["white_y"]), axis=1)
+    incident_user_df["selection_ratio"], incident_user_df["ci"] = incident_user_df.result.str
+    incident_user_df = incident_user_df.drop(columns=["result", "black_x", "black_y","white_x","white_y"])
+    return incident_user_df
 
 def add_extra_information(selection_bias_df: pd.DataFrame, nibrs_df: pd.DataFrame, census_df: pd.DataFrame, geographic_resolution: str) -> pd.DataFrame:
-    
+        
     incidents = nibrs_df.groupby(resolution_dict[geographic_resolution]).incidents.sum().reset_index()
     
     # Remove agency duplicates
@@ -371,41 +222,34 @@ def smooth_census_state(state_df: pd.DataFrame, county_gdf: gpd.GeoDataFrame) ->
     state_df = pd.merge(state_df, joiner.reset_index(), how="left", on="FIPS")
     return state_df.append(urban_df).reset_index()
 
-def n_users(bn: DAG, census_df: pd.DataFrame, resolution: str, area: str, race: str) -> int:
-    p_race_area = selection_by_race(bn, race, resolution, area, "uses_cannabis")
-    filtered = census_df[(census_df[resolution_dict[resolution]] == area) & (census_df.race == race)]
-    filtered = filtered.drop_duplicates()
-    return p_race_area * filtered.frequency.sum()
-
-def wilson_error(probability: float, count: int, z = 1.96) -> Tuple[float, float]:
+def wilson_error(n_s: int, n: int, z = 1.96) -> Tuple[float, float]:
     """
-    Wilson score interval - modified from: https://www.mikulskibartosz.name/wilson-score-in-python-example/
+    Wilson score interval
     
-    param probability: The probability of the event
-    param count: The number of events
+    param n_us: number of successes
+    param n: total number of events
     param z: The z-value
     
     return: The lower and upper bound of the Wilson score interval
     """
-    denominator = 1 + z**2/count
-    centre_adjusted_probability = probability + z*z / (2*count)
-    adjusted_standard_deviation = np.sqrt((probability*(1 - probability) + z*z / (4*count)) / count)
-    
-    # lower_bound = (centre_adjusted_probability - z*adjusted_standard_deviation) / denominator
-    # upper_bound = (centre_adjusted_probability + z*adjusted_standard_deviation) / denominator
-    return centre_adjusted_probability / denominator, z*adjusted_standard_deviation / denominator
+    n_f = n - n_s
+    denom = (n + z**2)
+    adjusted_p = (n_s + z ** 2 * 0.5) / denom
+    ci = (z / denom) * np.sqrt((n_s * n_f / n) + (z ** 2  / 4))
+    return adjusted_p, ci
 
-def wilson_selection(prob_g1: float, count_g1: int, prob_g2: float, count_g2: int) -> Tuple[float, float]:
+def wilson_selection(n_s_1, n_1, n_s_2, n_2) -> Tuple[float, float]:
     """
     Get the adjusted selection bias and wilson cis.
     """
-    p1, e1 = wilson_error(prob_g1, count_g1)
-    p2, e2 = wilson_error(prob_g2, count_g2)
-    ci = np.sqrt((e1 / p1)**2 + (e2 / p2)**2)
-    return p1 / p2, ci
+    p1, e1 = wilson_error(n_s_1, n_1)
+    p2, e2 = wilson_error(n_s_2, n_2)
+    sr = p1 / p2
+    ci = np.sqrt((e1 / p1)**2 + (e2 / p2)**2) * sr
+    return sr, ci
 
 
-def main(args):
+def main(resolution: str, year: str, smooth: bool):
     if "-" in args.year:
         years = args.year.split("-")
         years = range(int(years[0]), int(years[1]) + 1)
@@ -413,41 +257,51 @@ def main(args):
     else:
         years = [int(args.year)]
 
-    selection_bias_df = None
+    selection_bias_df = pd.DataFrame()
 
     for year in years:
+        
+        ##### DATA LOADING ######
         try:
             census_df, nsduh_df, nibrs_df = load_datasets(str(year))
         except FileNotFoundError:
             warnings.warn(f"Data missing for {year}. Skipping.")
             continue
+        
+        
+        # Copy to retain unsmoothed information
         incident_df = nibrs_df.copy()
         population_df = census_df.copy()
-        if args.smooth == "True":
+        
+        if smooth:
             census_df = smooth_census(census_df)
             nibrs_df = smooth_nibrs(nibrs_df)
-        bn = create_bn(nsduh_df, nibrs_df, census_df, args.resolution)
-        temp_df = selection_ratio(bn, args.resolution, census_df)
+            
+        ##### END DATA LOADING ######
+        
+        #### START ####
+        incident_users_df = incident_users(nibrs_df, census_df, nsduh_df, args.resolution)
+        temp_df = selection_ratio(incident_users_df)
         temp_df = add_extra_information(temp_df, incident_df, population_df, args.resolution)
         temp_df = add_race_ratio(census_df, temp_df, args.resolution)
+        #### END ###
+        
         temp_df["year"] = year
-        if selection_bias_df is not None:
-            selection_bias_df = selection_bias_df.append(temp_df.copy())
-        else:
-            selection_bias_df = temp_df.copy()
-    if args.smooth == "True":
-            selection_bias_df.to_csv(data_path / "output" / f"selection_ratio_{args.resolution}_{args.year}_smoothed.csv")
+        selection_bias_df = selection_bias_df.append(temp_df.copy())
+    if smooth:
+        filename = f"selection_ratio_{args.resolution}_{args.year}_smoothed.csv"
     else:
-        selection_bias_df.to_csv(data_path / "output" / f"selection_ratio_{args.resolution}_{args.year}.csv")
+        filename = f"selection_ratio_{args.resolution}_{args.year}.csv"
+    selection_bias_df.to_csv(data_path / "output" / filename)
 
 if __name__ == "__main__":
+    
     parser=argparse.ArgumentParser()
 
     parser.add_argument("--year", help="year, or year range.", default="2019")
     parser.add_argument("--resolution", help="The geographic resolution", default="state")
-    parser.add_argument("--min_incidents", help="Minimum number of incidents to be included in the selection bias df.", default=0)
     parser.add_argument("--smooth", help="Minimum number of incidents to be included in the selection bias df.", default=False)
 
-    args=parser.parse_args()
+    args = parser.parse_args()
     
-    main(args)
+    main(resolution = args.resolution, year = args.year, smooth = args.smooth == "True")

@@ -5,6 +5,7 @@ library(srvyr)
 library(survey)
 library(glue)
 library(readxl)
+library(here)
 
 # useful links
 # https://walker-data.com/tidycensus/articles/pums-data.html for standard errors etc
