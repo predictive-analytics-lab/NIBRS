@@ -249,13 +249,13 @@ def wilson_selection(n_s_1, n_1, n_s_2, n_2) -> Tuple[float, float]:
     return sr, ci
 
 
-def main(resolution: str, year: str, smooth: bool):
-    if "-" in args.year:
-        years = args.year.split("-")
+def main(resolution: str, year: str, smooth: bool, bootstraps: int = -1):
+    if "-" in year:
+        years = year.split("-")
         years = range(int(years[0]), int(years[1]) + 1)
 
     else:
-        years = [int(args.year)]
+        years = [int(year)]
 
     selection_bias_df = pd.DataFrame()
 
@@ -279,19 +279,48 @@ def main(resolution: str, year: str, smooth: bool):
             
         ##### END DATA LOADING ######
         
+        
+        
         #### START ####
-        incident_users_df = incident_users(nibrs_df, census_df, nsduh_df, args.resolution)
-        temp_df = selection_ratio(incident_users_df)
-        temp_df = add_extra_information(temp_df, incident_df, population_df, args.resolution)
-        temp_df = add_race_ratio(census_df, temp_df, args.resolution)
+        incident_users_df = incident_users(nibrs_df, census_df, nsduh_df, resolution)
+        incident_users_df = incident_users_df.fillna(0)
+        
+        def _sample_incidents(prob, trials, bootstraps: int, seed: int) -> int:
+            np.random.seed(seed)
+            if not np.isnan(prob):
+                successes = np.random.binomial(n = trials, p = prob, size=bootstraps)
+            else:
+                successes = np.nan
+            return successes / trials
+                    
+        if bootstraps < 0:
+            temp_df = selection_ratio(incident_users_df)
+        else:
+            black_count = []
+            white_count = []
+            incident_users_df["black_prob"] = incident_users_df.black_x / (incident_users_df.black_y * 365.0)
+            incident_users_df["white_prob"] = incident_users_df.white_x / (incident_users_df.white_y * 365.0)
+            for i, row in incident_users_df.iterrows():
+                white_vector = _sample_incidents(row["white_prob"], row["white_y"], bootstraps, seed=1)
+                black_vector = _sample_incidents(row["black_prob"], row["black_y"], bootstraps, seed=1)
+                selection_ratios = black_vector / white_vector
+                selection_ratios = np.nan_to_num(selection_ratios, nan=np.inf, posinf=np.inf)
+                incident_users_df.loc[i, "selection_ratio"] = row["black_prob"] / row["white_prob"]
+                incident_users_df.loc[i, "lb"] = np.nan_to_num(np.quantile(selection_ratios, 0.025), nan=np.inf)
+                incident_users_df.loc[i, "ub"] = np.nan_to_num(np.quantile(selection_ratios, 0.975), nan=np.inf)
+            temp_df = incident_users_df.reset_index()[["FIPS", "selection_ratio", "lb", "ub"]]
+        
+        
+        temp_df = add_extra_information(temp_df, incident_df, population_df, resolution)
+        temp_df = add_race_ratio(census_df, temp_df, resolution)
         #### END ###
         
         temp_df["year"] = year
         selection_bias_df = selection_bias_df.append(temp_df.copy())
     if smooth:
-        filename = f"selection_ratio_{args.resolution}_{args.year}_smoothed.csv"
+        filename = f"selection_ratio_{resolution}_{year}_smoothed.csv"
     else:
-        filename = f"selection_ratio_{args.resolution}_{args.year}.csv"
+        filename = f"selection_ratio_{resolution}_{year}.csv"
     selection_bias_df.to_csv(data_path / "output" / filename)
 
 if __name__ == "__main__":
@@ -301,7 +330,8 @@ if __name__ == "__main__":
     parser.add_argument("--year", help="year, or year range.", default="2019")
     parser.add_argument("--resolution", help="The geographic resolution", default="state")
     parser.add_argument("--smooth", help="Minimum number of incidents to be included in the selection bias df.", default=False)
+    parser.add_argument("--bootstraps", help="The number of bootstraps to perform in order to get a confidence interval", default=-1)
 
     args = parser.parse_args()
     
-    main(resolution = args.resolution, year = args.year, smooth = args.smooth == "True")
+    main(resolution = args.resolution, year = args.year, smooth = args.smooth == "True", bootstraps = int(args.bootstraps))
