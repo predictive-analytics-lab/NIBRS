@@ -259,13 +259,13 @@ def main(resolution: str, year: str, smooth: bool, bootstraps: int = -1):
 
     selection_bias_df = pd.DataFrame()
 
-    for year in years:
+    for yi in years:
         
         ##### DATA LOADING ######
         try:
-            census_df, nsduh_df, nibrs_df = load_datasets(str(year))
+            census_df, nsduh_df, nibrs_df = load_datasets(str(yi))
         except FileNotFoundError:
-            warnings.warn(f"Data missing for {year}. Skipping.")
+            warnings.warn(f"Data missing for {yi}. Skipping.")
             continue
         
         
@@ -315,12 +315,17 @@ def main(resolution: str, year: str, smooth: bool, bootstraps: int = -1):
         temp_df = add_race_ratio(census_df, temp_df, resolution)
         #### END ###
         
-        temp_df["year"] = year
+        temp_df["year"] = yi
         selection_bias_df = selection_bias_df.append(temp_df.copy())
     if smooth:
-        filename = f"selection_ratio_{resolution}_{year}_smoothed.csv"
+        filename = f"selection_ratio_{resolution}_{year}_smoothed"
     else:
-        filename = f"selection_ratio_{resolution}_{year}.csv"
+        filename = f"selection_ratio_{resolution}_{year}"
+    if bootstraps > 0:
+        filename += f"_bootstraps_{bootstraps}"
+    else:
+        filename += "_wilson"
+    filename += ".csv"
     selection_bias_df.to_csv(data_path / "output" / filename)
 
 if __name__ == "__main__":
