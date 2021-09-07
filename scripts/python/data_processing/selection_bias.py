@@ -301,8 +301,8 @@ def main(resolution: str, year: str, smooth: bool, bootstraps: int = -1):
             incident_users_df["black_prob"] = incident_users_df.black_x / (incident_users_df.black_y * 365.0)
             incident_users_df["white_prob"] = incident_users_df.white_x / (incident_users_df.white_y * 365.0)
             for i, row in incident_users_df.iterrows():
-                white_vector = _sample_incidents(row["white_prob"], row["white_y"], bootstraps, seed=1)
-                black_vector = _sample_incidents(row["black_prob"], row["black_y"], bootstraps, seed=1)
+                white_vector = _sample_incidents(row["white_prob"], row["white_y"] * 365.0, bootstraps, seed=1)
+                black_vector = _sample_incidents(row["black_prob"], row["black_y"]* 365.0, bootstraps, seed=1)
                 selection_ratios = black_vector / white_vector
                 selection_ratios = np.nan_to_num(selection_ratios, nan=np.inf, posinf=np.inf)
                 incident_users_df.loc[i, "selection_ratio"] = row["black_prob"] / row["white_prob"]
