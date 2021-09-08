@@ -57,7 +57,7 @@ def disjunction(*conditions):
     """
     return functools.reduce(np.logical_or, conditions)
 
-def load_and_process_nibrs(years: str, resolution: str, hispanic: bool) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def load_and_process_nibrs(years: str, resolution: str, hispanic: bool = False, arrests: bool = False) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     This function loads the current nibrs dataset, and processes it.
     Additionally, it adds the FIPS code and state subregion code to the data.
@@ -81,7 +81,7 @@ def load_and_process_nibrs(years: str, resolution: str, hispanic: bool) -> Tuple
 
     nibrs_df = pd.read_csv(data_name, usecols=cols_to_use)
             
-    nibrs_df = nibrs_df[disjunction(*[nibrs_df.data_year == yi for yi in years])]
+    nibrs_df = nibrs_df[disjunction(*[nibrs_df.data_year == yi for yi in years])] 
     
     nibrs_df["age_num"] = nibrs_df.age_num.apply(age_cat)
     nibrs_df["sex_code"] = nibrs_df.sex_code.map({"F": "female", "M": "male"})
@@ -113,8 +113,11 @@ def load_and_process_nibrs(years: str, resolution: str, hispanic: bool) -> Tuple
     
     nibrs_df = nibrs_df.merge(locations, on=resolution_dict[resolution], how="inner")
     nibrs_arrests = nibrs_arrests.merge(locations, on=resolution_dict[resolution], how="inner")
-
-    return nibrs_df, nibrs_arrests
+    
+    if arrests:
+        return nibrs_df, nibrs_arrests
+    
+    return nibrs_df
 
 if __name__ == "__main__":
     parser=argparse.ArgumentParser()

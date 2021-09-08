@@ -1,8 +1,10 @@
 """This python file loads the NSDUH dataset and formats it for the project needs."""
 
+from typing import List, Union
 import pandas as pd
 from pathlib import Path
 import argparse
+import csv
 
 data_path = Path(__file__).parent.parent.parent.parent / "data"
 
@@ -43,8 +45,8 @@ age_dict = {
 
 poverty_dict = {
     1: "living in poverty",
-    2: "income up to 2x poverty threshold",
-    3: "income more than 2x poverty threshold"
+    2: "income higher than poverty level",
+    3: "income higher than poverty level"
 }
 
 urbancounty_dict = {
@@ -71,46 +73,56 @@ def binary_usage(n):
 ######### Data Loading ##########
 
 
-def join_years(years: str) -> pd.DataFrame:
+def get_nsduh_data(years: Union[str, List[Union[str, int]]]) -> pd.DataFrame:
     """
     Function which converts a string range of years to a list of year ints.
     Following this, each corresponding NSDUH year is loaded and merged with the
     NSDUH data.
     """
-    if "-" not in years:
-        return load_and_process_nsduh(int(years))
-    years = years.split("-")
-    years = range(int(years[0]), int(years[1]) + 1)
+    if isinstance(years, str):
+        if "-" not in years:
+            return load_and_process_nsduh(years)
+        years = years.split("-")
+        years = range(int(years[0]), int(years[1]) + 1)
     
     assert min(years) >= 2012 and max(years) <= 2019, "Invalid year range. Valid range is: 2012-2019."
 
     # Load NSDUH data
-    nsduh_df = load_and_process_nsduh(years[0])
+    nsduh_df = pd.DataFrame()
 
     # Load each year of NSDUH data
-    for year in years[1:]:
+    for year in years:
         nsduh_df = nsduh_df.append(load_and_process_nsduh(year), ignore_index=True)
 
     return nsduh_df
 
-def load_and_process_nsduh(year: int) -> pd.DataFrame:
+def load_and_process_nsduh(year: Union[int, str]) -> pd.DataFrame:
+    if isinstance(year, str):
+        year = int(year)
+    
     # This is the NSDUH dataset. Only AGE/RACE/SEX/MJDAY30A are selected.
+    with open(data_path / "NSDUH" / f"NSDUH_{year}_Tab.tsv", newline='') as f:
+        csv_reader = csv.reader(f)
+        csv_headings = next(csv_reader)[0].split("\t")
+    poverty_var = [x for x in csv_headings if "poverty" in x.lower()]
+    coutyp_var = [x for x in csv_headings if "coutyp" in x.lower()]
+
     nsduh_df = pd.read_csv(data_path / "NSDUH" / f"NSDUH_{year}_Tab.tsv",
-                        sep="\t", usecols=columns_to_use)
+                        sep="\t", usecols=columns_to_use + poverty_var + coutyp_var)
 
     nsduh_df.rename(columns={
         "NEWRACE2": "race",
         "CATAG3": "age",
         "IRSEX": "sex",
-        # "POVERTY3": "poverty",
-        # "COUTYP4": "urbancounty"
+        poverty_var[0]: "poverty",
+        coutyp_var[0]: "urbancounty"
     }, inplace=True)
 
     nsduh_df["race"] = nsduh_df.race.map(race_dict)
     nsduh_df["age"] = nsduh_df.age.map(age_dict)
     nsduh_df["sex"] = nsduh_df.sex.map(sex_dict)
-    # nsduh_df["poverty"] = nsduh_df.poverty.map(poverty_dict)
-    # nsduh_df["urbancounty"] = nsduh_df.urbancounty.map(urbancounty_dict)
+    nsduh_df["poverty"] = nsduh_df.poverty.map(poverty_dict)
+    nsduh_df["urbancounty"] = nsduh_df.urbancounty.map(urbancounty_dict)
     nsduh_df["MJBINARY"] = nsduh_df.MJDAY30A.map(binary_usage)
     nsduh_df["MJDAY30A"] = nsduh_df.MJDAY30A.map(usage)
     nsduh_df = nsduh_df[nsduh_df.race != "other/mixed"]
@@ -128,9 +140,9 @@ if __name__ == "__main__":
 
     if not args.year:
         print("No year specified. Defaulting to 2019")
-        df = join_years("2019")
+        df = get_nsduh_data("2019")
     else:
-        df = join_years(args.year)
+        df = get_nsduh_data(args.year)
 
     year = args.year if args.year else "2019"
     df.to_csv(data_path / "NSDUH" / f"nsduh_processed_{year}.csv")
