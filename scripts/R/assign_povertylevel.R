@@ -6,6 +6,7 @@ library(survey)
 library(glue)
 library(readxl)
 library(here)
+library(vroom)
 
 # useful links
 # https://walker-data.com/tidycensus/articles/pums-data.html for standard errors etc
@@ -60,9 +61,9 @@ get_pums_x_state <- function(state_chosen){
 write_poverty_data <- function(state_chosen){
 
   files_already_present <- list.files(here('scripts', 'R', 'downloaded_data', 'poverty_data_x_state'))
-  if(glue('{state_chosen}.csv') %in% files_already_present){
-    return()
-  }
+  #if(glue('{state_chosen}.csv') %in% files_already_present){
+  #  return()
+  #}
 
   pums <- NULL
   while(is.null(pums) | class(pums)[1] == "try-error"){
@@ -73,6 +74,7 @@ write_poverty_data <- function(state_chosen){
   pums <- pums %>%
     filter(RAC1P_label == "White alone" | RAC1P_label == "Black or African American alone") %>%
     filter(HISP_label == "Not Spanish/Hispanic/Latino")
+
 
   # recode
   pums <- pums %>%
@@ -108,8 +110,9 @@ write_poverty_data <- function(state_chosen){
       ),
       poverty_level = case_when(
         POVPIP >= 0 & POVPIP <= 100 ~ 'living in poverty',
-        POVPIP > 100 & POVPIP <= 200 ~ 'income up to 2x poverty threshold',
-        POVPIP > 200 ~ 'income more than 2x poverty threshold'
+        POVPIP > 100 ~ 'income higher than poverty level'
+        #POVPIP > 100 & POVPIP <= 200 ~ 'income up to 2x poverty threshold',
+        #POVPIP > 200 ~ 'income more than 2x poverty threshold'
       ),
       RAC1P_label = case_when(
         RAC1P_label == "White alone" ~ 'white',
@@ -150,7 +153,7 @@ files_to_load <- list.files(here('scripts', 'R', 'downloaded_data', 'poverty_dat
            full.names = TRUE) %>% as.list()
 names(files_to_load) <- str_replace(list.files(here('scripts', 'R', 'downloaded_data', 'poverty_data_x_state')), '.csv', '')
 files_to_load %>%
-  map_dfr( ~ vroom(.x) %>% mutate(FIPS = as.character(FIPS)), .id = 'state') %>%
+  map_dfr( ~ vroom(.x, col_types = cols()) %>% mutate(FIPS = as.character(FIPS)), .id = 'state') %>%
   drop_na() %>%
   rename(age = age_census_largebins) %>%
   # rename states to full names
