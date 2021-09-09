@@ -19,6 +19,9 @@ from pathlib import Path
 from itertools import product
 import subprocess
 
+from process_census_data import get_census_data
+from process_nsduh_data import get_nsduh_data
+from process_nibrs_data import load_and_process_nibrs
 ##### LOAD DATASETS ######
 
 base_path = Path(__file__).parent.parent.parent.parent
@@ -37,15 +40,27 @@ resolution_dict = {"state": "state",
 
 ###### Conditioning #######
 
+def weighted_average_aggregate(group: pd.DataFrame):
+    return (group["MJDAY30A"] * group["ANALWT_C"]).sum() / 30
 
-def incident_users(nibrs_df: pd.DataFrame, census_df: pd.DataFrame, nsduh_df: pd.DataFrame, resolution: str) -> pd.DataFrame:
+def incident_users(nibrs_df: pd.DataFrame, census_df: pd.DataFrame, nsduh_df: pd.DataFrame, resolution: str, poverty: bool, urban: bool, usage_name: str = "MJDAY30A") -> pd.DataFrame:
+    vars = ["race", "age", "sex"]
+    if poverty:
+        vars += ["poverty"]
+    if urban:
+        vars += ["urbancounty"]
+    if poverty and urban:
+        raise ValueError("Only EITHER poverty OR urban may be used.")
+    
     census_df = census_df[census_df.FIPS.isin(nibrs_df.FIPS)]
-    census_df = census_df[["FIPS", "race", "age", "sex", "frequency"]]
+    census_df = census_df[vars + ["frequency", resolution_dict[resolution]]]
     census_df = census_df.drop_duplicates()
-    cross = pd.crosstab(nsduh_df.MJDAY30A, nsduh_df.race, normalize="columns")
-    cross_mult = cross.multiply(cross.index, axis="rows")
-    cross_sum = cross_mult.sum(axis="rows") / 30
-    users = (census_df.groupby(sorted(["race"] + [resolution_dict[resolution]], key=str.casefold))["frequency"].sum() * cross_sum).to_frame("user_count").reset_index()
+        
+    group_weights = (nsduh_df.groupby([*vars, usage_name])["ANALWT_C"].sum() / nsduh_df.groupby(vars)["ANALWT_C"].sum()).reset_index()
+    group_weights = group_weights.groupby(vars).apply(weighted_average_aggregate).to_frame("MJDAY")
+        
+    users = (census_df.groupby(vars + [resolution_dict[resolution]])["frequency"].sum().to_frame().frequency * group_weights.MJDAY).to_frame("user_count").reset_index()
+    users = users.groupby(["race", resolution_dict[resolution]]).user_count.sum().to_frame("user_count").reset_index()
     incidents = nibrs_df.groupby(sorted(["race"] + [resolution_dict[resolution]], key=str.casefold)).incidents.sum().to_frame("incident_count").reset_index()
     users = users.pivot(index="FIPS", columns="race", values="user_count")
     incidents = incidents.pivot(index="FIPS", columns="race", values="incident_count")
@@ -108,16 +123,21 @@ def join_state_with_counties(df: pd.DataFrame, county_shp: gpd.GeoDataFrame, sta
     return county_shp.reset_index()
 
 
-def load_datasets(years: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def load_datasets(years: str, resolution: str, poverty: bool, urban: bool) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     # This is the county level census data. See "process_census_data.py".
     # FIPS code is loaded in as an 'object' to avoid integer conversion.
-    subprocess.run(["python", str((data_processing_path / "process_census_data.py").resolve()), "--year", years])
-    subprocess.run(["python", str((data_processing_path / "process_nsduh_data.py").resolve()), "--year", years])
-    subprocess.run(["python", str((data_processing_path / "process_nibrs_data.py").resolve()), "--year", years, "--resolution", "county"])
+    # subprocess.run(["python", str((data_processing_path / "process_census_data.py").resolve()), "--year", years])
+    # subprocess.run(["python", str((data_processing_path / "process_nsduh_data.py").resolve()), "--year", years])
+    # subprocess.run(["python", str((data_processing_path / "process_nibrs_data.py").resolve()), "--year", years, "--resolution", "county"])
+    
+    census_df = get_census_data(years = years, poverty = poverty, urban = urban)
+    nsduh_df = get_nsduh_data(years=years)
+    nibrs_df = load_and_process_nibrs(years=years, resolution=resolution)
 
-    census_df = pd.read_csv(data_path / "census" / f"census_processed_{years}.csv", dtype={'FIPS': object}, index_col=0)
-    nsduh_df = pd.read_csv(data_path / "NSDUH" / f"nsduh_processed_{years}.csv")
-    nibrs_df = pd.read_csv(data_path / "NIBRS" / f"incidents_processed_{years}.csv", dtype={'FIPS': object}, index_col=0)
+    # census_df = pd.read_csv(data_path / "census" / f"census_processed_{years}.csv", dtype={'FIPS': object}, index_col=0)
+        
+    # nsduh_df = pd.read_csv(data_path / "NSDUH" / f"nsduh_processed_{years}.csv")
+    # nibrs_df = pd.read_csv(data_path / "NIBRS" / f"incidents_processed_{years}.csv", dtype={'FIPS': object}, index_col=0)
 
     return census_df, nsduh_df, nibrs_df
 
@@ -249,7 +269,7 @@ def wilson_selection(n_s_1, n_1, n_s_2, n_2) -> Tuple[float, float]:
     return sr, ci
 
 
-def main(resolution: str, year: str, smooth: bool, bootstraps: int = -1):
+def main(resolution: str, year: str, smooth: bool, bootstraps: int, poverty: bool, urban: bool):
     if "-" in year:
         years = year.split("-")
         years = range(int(years[0]), int(years[1]) + 1)
@@ -263,16 +283,14 @@ def main(resolution: str, year: str, smooth: bool, bootstraps: int = -1):
         
         ##### DATA LOADING ######
         try:
-            census_df, nsduh_df, nibrs_df = load_datasets(str(yi))
+            census_df, nsduh_df, nibrs_df = load_datasets(str(yi), resolution, poverty, urban)
         except FileNotFoundError:
             warnings.warn(f"Data missing for {yi}. Skipping.")
             continue
-        
-        
         # Copy to retain unsmoothed information
         incident_df = nibrs_df.copy()
         population_df = census_df.copy()
-        
+                
         if smooth:
             census_df = smooth_census(census_df)
             nibrs_df = smooth_nibrs(nibrs_df)
@@ -282,7 +300,7 @@ def main(resolution: str, year: str, smooth: bool, bootstraps: int = -1):
         
         
         #### START ####
-        incident_users_df = incident_users(nibrs_df, census_df, nsduh_df, resolution)
+        incident_users_df = incident_users(nibrs_df, census_df, nsduh_df, resolution, poverty, urban)
         incident_users_df = incident_users_df.fillna(0)
         
         def _sample_incidents(prob, trials, bootstraps: int, seed: int) -> int:
@@ -317,14 +335,23 @@ def main(resolution: str, year: str, smooth: bool, bootstraps: int = -1):
         
         temp_df["year"] = yi
         selection_bias_df = selection_bias_df.append(temp_df.copy())
+        
+    filename = f"selection_ratio_{resolution}_{year}"
+    
     if smooth:
-        filename = f"selection_ratio_{resolution}_{year}_smoothed"
-    else:
-        filename = f"selection_ratio_{resolution}_{year}"
+        filename += "_smoothed"
+        
     if bootstraps > 0:
         filename += f"_bootstraps_{bootstraps}"
     else:
         filename += "_wilson"
+        
+    if poverty:
+        filename += "_poverty"
+        
+    if urban:
+        filename += "_urban"
+        
     filename += ".csv"
     selection_bias_df.to_csv(data_path / "output" / filename)
 
@@ -332,11 +359,19 @@ if __name__ == "__main__":
     
     parser=argparse.ArgumentParser()
 
-    parser.add_argument("--year", help="year, or year range.", default="2019")
-    parser.add_argument("--resolution", help="The geographic resolution", default="state")
-    parser.add_argument("--smooth", help="Minimum number of incidents to be included in the selection bias df.", default=False)
-    parser.add_argument("--bootstraps", help="The number of bootstraps to perform in order to get a confidence interval", default=-1)
+    parser.add_argument("--year", help="year, or year range. e.g. 2015-2019, 2013, etc.", default="2019")
+    parser.add_argument("--resolution", help="The geographic resolution. Options: county, region, state, agency. Default = county.", default="county")
+    parser.add_argument("--bootstraps", type=int, help="The number of bootstraps to perform in order to get a confidence interval.", default=-1)
+    parser.add_argument("--smooth", help="Flag indicating whether to perform geospatial smoothing. Default = False.", default=False, action='store_true')
+    parser.add_argument("--poverty", help="Whether to include poverty in the usage model.", default=False, action='store_true')
+    parser.add_argument("--urban", help="Whether to include urban/rural definitions in the usage model.", default=False, action='store_true')
+
 
     args = parser.parse_args()
-    
-    main(resolution = args.resolution, year = args.year, smooth = args.smooth == "True", bootstraps = int(args.bootstraps))
+        
+    main(resolution = args.resolution,
+         year = args.year,
+         smooth = args.smooth,
+         bootstraps = int(args.bootstraps),
+         poverty = args.poverty, 
+         urban = args.urban)
