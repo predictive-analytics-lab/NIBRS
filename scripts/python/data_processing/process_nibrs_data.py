@@ -12,7 +12,8 @@ import glob
 import warnings
 
 data_path = Path(__file__).parent.parent.parent.parent / "data"
-data_name = data_path / "NIBRS"/ "raw" / "cannabis_allyears.csv"
+data_name_drug_incidents = data_path / "NIBRS"/ "raw" / "cannabis_allyears.csv"
+data_name_all_incidents = data_path / "NIBRS"/ "raw" / "cannabis_allyears_allincidents.csv"
 
 cols_to_use = [
     "race",
@@ -57,7 +58,7 @@ def disjunction(*conditions):
     """
     return functools.reduce(np.logical_or, conditions)
 
-def load_and_process_nibrs(years: str, resolution: str, hispanic: bool = False, arrests: bool = False) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def load_and_process_nibrs(years: str, resolution: str, hispanic: bool = False, arrests: bool = False, all_incidents: bool = False) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     This function loads the current nibrs dataset, and processes it.
     Additionally, it adds the FIPS code and state subregion code to the data.
@@ -78,9 +79,11 @@ def load_and_process_nibrs(years: str, resolution: str, hispanic: bool = False, 
         except:
             print("invalid year format. Run appropriate SQL script.")
 
+    if all_incidents:
+        nibrs_df = pd.read_csv(data_name_all_incidents, usecols=cols_to_use)
+    else:
+        nibrs_df = pd.read_csv(data_name_drug_incidents, usecols=cols_to_use)
 
-    nibrs_df = pd.read_csv(data_name, usecols=cols_to_use)
-            
     nibrs_df = nibrs_df[disjunction(*[nibrs_df.data_year == yi for yi in years])] 
     
     nibrs_df["age_num"] = nibrs_df.age_num.apply(age_cat)
@@ -124,11 +127,12 @@ if __name__ == "__main__":
 
     parser.add_argument("--year", help="year, or year range.", default="2019")
     parser.add_argument("--resolution", help="Geographic resolution to aggregate incidents over.", default="state")
-    parser.add_argument("--hispanic", help="Whether to include hispanic individuals", default=False)
+    parser.add_argument("--all_incidents", help="Geographic resolution to aggregate incidents over.", default=False, action='store_true')
+    parser.add_argument("--hispanic", help="Whether to include hispanic individuals", default=False, action='store_true')
 
     args=parser.parse_args()
 
-    df, df_a = load_and_process_nibrs(args.year, args.resolution, args.hispanic == True)
+    df, df_a = load_and_process_nibrs(args.year, args.resolution, args.hispanic, all_incidents=args.all_incidents)
     year = args.year if args.year else "2019"
     if df is not None:
         df.to_csv(data_path / "NIBRS" / f"incidents_processed_{year}.csv")
