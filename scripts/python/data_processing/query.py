@@ -115,9 +115,9 @@ def query_one_state_year(year_dir: Path) -> pd.DataFrame:
     main_df = main_df.merge(read_csv("month", usecols=["nibrs_month_id", "data_year", "month_num"]), on="nibrs_month_id")
 
     main_df = main_df[
-        (main_df['other_offense'] == False) &
+        # (main_df['other_offense'] == False) &
         # (main_df['location_count'] == 1) &
-        (main_df['other_criminal_act_count'] == 0) &
+        # (main_df['other_criminal_act_count'] == 0) &
         (main_df['ethnicity_id'] != 1) &
         (main_df['race_id'].isin([1, 2])) &
         (main_df['sex_code'].isin(["M", "F"])) &
@@ -142,5 +142,5 @@ def query_all(downloads_dir: Path) -> pd.DataFrame:
 if __name__ == "__main__":
     #df = query_one_state_year(data_dir / "NE-2019") # next(data_dir.iterdir()))
     df = query_all(data_dir)
-    df.to_csv(output_dir / "raw" / "cannabis_allyears.csv")
+    df.to_csv(output_dir / "raw" / "cannabis_allyears_allincidents.csv")
 

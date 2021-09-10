@@ -23,12 +23,12 @@ def confidence_categorization(df: pd.DataFrame, value_col: str, ci_col: str) -> 
     return df
 
 def additions(df: pd.DataFrame) -> pd.DataFrame:
-    # df = confidence_categorization(df, "selection_ratio", "ci")
+    df = confidence_categorization(df, "selection_ratio", "ci")
 
-    # df["frequency"] = df["frequency"].apply(lambda x: f'{int(x):,}')
-    # df["bwratio"] = df["bwratio"].apply(lambda x: f'{x:.3f}')
+    df["frequency"] = df["frequency"].apply(lambda x: f'{int(x):,}')
+    df["bwratio"] = df["bwratio"].apply(lambda x: f'{x:.3f}')
 
-    # df["slci"] = df["selection_ratio"].round(3).astype(str) + " ± " + df["ci"].round(3).astype(str)
+    df["slci"] = df["selection_ratio"].round(3).astype(str) + " ± " + df["ci"].round(3).astype(str)
     df["selection_ratio_log10"] = np.log10(df["selection_ratio"])
 
     return df

@@ -8,7 +8,7 @@ CANNABIS-RELATED incidents at a given GEOGRAPHIC RESOLUTION.
 from functools import partial
 import warnings
 import argparse
-from typing import Callable, List, Tuple
+from typing import Callable, List, Optional, Tuple
 from typing_extensions import Literal
 import numpy as np
 import pandas as pd
@@ -52,7 +52,7 @@ def incident_users(nibrs_df: pd.DataFrame, census_df: pd.DataFrame, nsduh_df: pd
     if poverty and urban:
         raise ValueError("Only EITHER poverty OR urban may be used.")
     
-    census_df = census_df[census_df.FIPS.isin(nibrs_df.FIPS)]
+    census_df = census_df[census_df[resolution_dict[resolution]].isin(nibrs_df[resolution_dict[resolution]])]
     census_df = census_df[vars + ["frequency", resolution_dict[resolution]]]
     census_df = census_df.drop_duplicates()
         
@@ -62,18 +62,21 @@ def incident_users(nibrs_df: pd.DataFrame, census_df: pd.DataFrame, nsduh_df: pd
     users = (census_df.groupby(vars + [resolution_dict[resolution]])["frequency"].sum().to_frame().frequency * group_weights.MJDAY).to_frame("user_count").reset_index()
     users = users.groupby(["race", resolution_dict[resolution]]).user_count.sum().to_frame("user_count").reset_index()
     incidents = nibrs_df.groupby(sorted(["race"] + [resolution_dict[resolution]], key=str.casefold)).incidents.sum().to_frame("incident_count").reset_index()
-    users = users.pivot(index="FIPS", columns="race", values="user_count")
-    incidents = incidents.pivot(index="FIPS", columns="race", values="incident_count")
-    return incidents.merge(users, on="FIPS") 
+    users = users.pivot(index=resolution_dict[resolution], columns="race", values="user_count")
+    incidents = incidents.pivot(index=resolution_dict[resolution], columns="race", values="incident_count")
+    return incidents.merge(users, on=resolution_dict[resolution]) 
 
 
-def selection_ratio(incident_user_df: pd.DataFrame) -> pd.DataFrame:
+def selection_ratio(incident_user_df: pd.DataFrame, wilson: bool) -> pd.DataFrame:
     incident_user_df = incident_user_df.fillna(0).reset_index()
     incident_user_df = incident_user_df[incident_user_df.black_y > 0]
     incident_user_df = incident_user_df[incident_user_df.white_y > 0]
-    incident_user_df["result"] = incident_user_df.apply(lambda x: wilson_selection(x["black_x"], x["black_y"], x["white_x"], x["white_y"]), axis=1)
-    incident_user_df["selection_ratio"], incident_user_df["ci"] = incident_user_df.result.str
-    incident_user_df = incident_user_df.drop(columns=["result", "black_x", "black_y","white_x","white_y"])
+    if wilson:
+        incident_user_df["result"] = incident_user_df.apply(lambda x: wilson_selection(x["black_x"], x["black_y"], x["white_x"], x["white_y"]), axis=1)
+        incident_user_df["selection_ratio"], incident_user_df["ci"] = incident_user_df.result.str
+    else:
+        incident_user_df["selection_ratio"] = incident_user_df.apply(lambda x: simple_selection_ratio(x["black_x"], x["black_y"], x["white_x"], x["white_y"]), axis=1)
+    incident_user_df = incident_user_df.rename(columns={"black_x": "black_incidents", "black_y": "black_users","white_x": "white_incidents","white_y": "white_users"})
     return incident_user_df
 
 def add_extra_information(selection_bias_df: pd.DataFrame, nibrs_df: pd.DataFrame, census_df: pd.DataFrame, geographic_resolution: str) -> pd.DataFrame:
@@ -123,7 +126,7 @@ def join_state_with_counties(df: pd.DataFrame, county_shp: gpd.GeoDataFrame, sta
     return county_shp.reset_index()
 
 
-def load_datasets(years: str, resolution: str, poverty: bool, urban: bool) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def load_datasets(years: str, resolution: str, poverty: bool, urban: bool, all_incidents: bool) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     # This is the county level census data. See "process_census_data.py".
     # FIPS code is loaded in as an 'object' to avoid integer conversion.
     # subprocess.run(["python", str((data_processing_path / "process_census_data.py").resolve()), "--year", years])
@@ -132,7 +135,7 @@ def load_datasets(years: str, resolution: str, poverty: bool, urban: bool) -> Tu
     
     census_df = get_census_data(years = years, poverty = poverty, urban = urban)
     nsduh_df = get_nsduh_data(years=years)
-    nibrs_df = load_and_process_nibrs(years=years, resolution=resolution)
+    nibrs_df = load_and_process_nibrs(years=years, resolution=resolution, all_incidents=all_incidents)
 
     # census_df = pd.read_csv(data_path / "census" / f"census_processed_{years}.csv", dtype={'FIPS': object}, index_col=0)
         
@@ -258,6 +261,16 @@ def wilson_error(n_s: int, n: int, z = 1.96) -> Tuple[float, float]:
     ci = (z / denom) * np.sqrt((n_s * n_f / n) + (z ** 2  / 4))
     return adjusted_p, ci
 
+def simple_selection_ratio(n_s_1, n_1, n_s_2, n_2) -> float:
+    # Add 2 to avoid division by zero - bad solution, but temporary.
+    n_s_1 += 2
+    n_s_2 += 2
+    n_1 += 2
+    n_2 += 2
+    p1 = n_s_1 / n_1
+    p2 = n_s_2 / n_2
+    return p1 / p2
+
 def wilson_selection(n_s_1, n_1, n_s_2, n_2) -> Tuple[float, float]:
     """
     Get the adjusted selection bias and wilson cis.
@@ -269,7 +282,7 @@ def wilson_selection(n_s_1, n_1, n_s_2, n_2) -> Tuple[float, float]:
     return sr, ci
 
 
-def main(resolution: str, year: str, smooth: bool, bootstraps: int, poverty: bool, urban: bool):
+def main(resolution: str, year: str, smooth: bool, ci: Optional[Literal['none', 'wilson', 'bootstrap']], bootstraps: int, poverty: bool, urban: bool, all_incidents: bool):
     if "-" in year:
         years = year.split("-")
         years = range(int(years[0]), int(years[1]) + 1)
@@ -283,7 +296,7 @@ def main(resolution: str, year: str, smooth: bool, bootstraps: int, poverty: boo
         
         ##### DATA LOADING ######
         try:
-            census_df, nsduh_df, nibrs_df = load_datasets(str(yi), resolution, poverty, urban)
+            census_df, nsduh_df, nibrs_df = load_datasets(str(yi), resolution, poverty, urban, all_incidents)
         except FileNotFoundError:
             warnings.warn(f"Data missing for {yi}. Skipping.")
             continue
@@ -311,8 +324,10 @@ def main(resolution: str, year: str, smooth: bool, bootstraps: int, poverty: boo
                 successes = np.nan
             return successes / trials
                     
-        if bootstraps < 0:
-            temp_df = selection_ratio(incident_users_df)
+        if ci == "none":
+            temp_df = selection_ratio(incident_users_df, wilson=False)
+        elif ci == "wilson":
+            temp_df = selection_ratio(incident_users_df, wilson=True)
         else:
             black_count = []
             white_count = []
@@ -326,7 +341,8 @@ def main(resolution: str, year: str, smooth: bool, bootstraps: int, poverty: boo
                 incident_users_df.loc[i, "selection_ratio"] = row["black_prob"] / row["white_prob"]
                 incident_users_df.loc[i, "lb"] = np.nan_to_num(np.quantile(selection_ratios, 0.025), nan=np.inf)
                 incident_users_df.loc[i, "ub"] = np.nan_to_num(np.quantile(selection_ratios, 0.975), nan=np.inf)
-            temp_df = incident_users_df.reset_index()[["FIPS", "selection_ratio", "lb", "ub"]]
+            incident_user_df = incident_user_df.rename(columns={"black_x": "black_incidents", "black_y": "black_users","white_x": "white_incidents","white_y": "white_users"})
+            temp_df = incident_users_df.reset_index()[["FIPS", "selection_ratio", "lb", "ub", "black_incidents", "black_users", "white_incidents", "white_users"]]
         
         
         temp_df = add_extra_information(temp_df, incident_df, population_df, resolution)
@@ -341,9 +357,9 @@ def main(resolution: str, year: str, smooth: bool, bootstraps: int, poverty: boo
     if smooth:
         filename += "_smoothed"
         
-    if bootstraps > 0:
+    if ci == "bootstrap":
         filename += f"_bootstraps_{bootstraps}"
-    else:
+    elif ci == "wilson":
         filename += "_wilson"
         
     if poverty:
@@ -351,6 +367,9 @@ def main(resolution: str, year: str, smooth: bool, bootstraps: int, poverty: boo
         
     if urban:
         filename += "_urban"
+        
+    if all_incidents:
+        filename += "_all_incidents"
         
     filename += ".csv"
     selection_bias_df.to_csv(data_path / "output" / filename)
@@ -361,17 +380,24 @@ if __name__ == "__main__":
 
     parser.add_argument("--year", help="year, or year range. e.g. 2015-2019, 2013, etc.", default="2019")
     parser.add_argument("--resolution", help="The geographic resolution. Options: county, region, state, agency. Default = county.", default="county")
+    parser.add_argument("--ci", type=str, help="The type of confidence interval to use. Options: [None, bootstrap, wilson]. Default: None", default="none")
     parser.add_argument("--bootstraps", type=int, help="The number of bootstraps to perform in order to get a confidence interval.", default=-1)
     parser.add_argument("--smooth", help="Flag indicating whether to perform geospatial smoothing. Default = False.", default=False, action='store_true')
     parser.add_argument("--poverty", help="Whether to include poverty in the usage model.", default=False, action='store_true')
     parser.add_argument("--urban", help="Whether to include urban/rural definitions in the usage model.", default=False, action='store_true')
+    parser.add_argument("--all_incidents", help="Whether to include all incident types that involve cannabis in some way.", default=False, action='store_true')
 
 
     args = parser.parse_args()
+    
+    if int(args.bootstraps) > 0 and args.ci != "bootstrap":
+        raise ValueError("If bootstraps is specified, ci must be bootstrap.")
         
     main(resolution = args.resolution,
          year = args.year,
          smooth = args.smooth,
+         ci=args.ci.lower(),
          bootstraps = int(args.bootstraps),
          poverty = args.poverty, 
-         urban = args.urban)
+         urban = args.urban,
+         all_incidents = args.all_incidents)
