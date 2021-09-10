@@ -69,7 +69,25 @@ def query_one_state_year(year_dir: Path) -> pd.DataFrame:
         1: 3
     }, na_action="ignore")
     criminal_act_df["criminal_act"] = criminal_act_df["criminal_act"].fillna(0)
-    offense_df = read_csv("offense", usecols=["offense_id", "incident_id", "offense_type_id"])
+    offense_df = read_csv("offense", usecols=["offense_id", "incident_id", "offense_type_id", "location_id"])
+    """			when no3.location_id in (13, 18) then 'street'
+			when no3.location_id in (8, 7, 23, 12) then 'store'
+			when no3.location_id = 20 then 'home'
+			when no3.location_id = 14 then 'hotel/motel'
+			when no3.location_id = 41 then 'elementary school'"""
+    offense_df["location"] = offense_df["location_id"].map({
+        13: "street",
+        18: "street",
+        8: "store",
+        7: "store",
+        23: "store",
+        12: "store",
+        20: "home",
+        14: "hotel/motel",
+        41: "elementary school"
+    })
+    
+    offense_df = offense_df.drop(columns=["location_id"])
 
     offense_df['drug_offense'] = offense_df["offense_type_id"] == 16
     offense_df['drug_equipment_offense'] = offense_df["offense_type_id"] == 35
@@ -85,7 +103,8 @@ def query_one_state_year(year_dir: Path) -> pd.DataFrame:
         'criminal_act': "max",
         'drug_offense': "any",
         'drug_equipment_offense': "any",
-        'other_offense': "any"
+        'other_offense': "any",
+        "location": tuple
     })
     criminal_act_df['criminal_act'] = criminal_act_df['criminal_act'].map({
         1: "consuming",
