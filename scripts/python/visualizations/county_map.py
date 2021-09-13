@@ -74,7 +74,7 @@ def confidence_map(df: pd.DataFrame, time_col: str):
     )
     fig.update_geos(fitbounds="locations",visible=False, scope="usa")
     fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0},)
-    fig.write_html(str(map_path / 'county_ratio_2019.html'))
+    fig.write_html(str(map_path / 'county_ratio_2019_no_poverty_conf.html'))
 
 def map_with_slider(df: pd.DataFrame, time_col: str, value_col: str, log: bool = True,):
 
@@ -113,11 +113,11 @@ def map_with_slider(df: pd.DataFrame, time_col: str, value_col: str, log: bool =
     )
     fig.update_geos(fitbounds="locations",visible=False, scope="usa")
     fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0},)
-    fig.write_html(str(map_path / 'county_ratio_2019.html'))
+    fig.write_html(str(map_path / 'county_ratio_2019_no_poverty.html'))
 
 
 if __name__ == "__main__":
     data_path = Path(__file__).parents[3] / "data" / "output"
-    df = pd.read_csv(data_path / "selection_ratio_county_2019.csv", dtype={'FIPS': object})
+    df = pd.read_csv(data_path / "selection_ratio_county_2019_wilson_nopoverty.csv", dtype={'FIPS': object})
     # map_with_slider(df, "year", "selection_ratio", log=True)
     confidence_map(df, "year")

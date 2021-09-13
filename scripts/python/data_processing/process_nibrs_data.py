@@ -21,7 +21,8 @@ cols_to_use = [
     "sex_code",
     "arrest_type_name",
     "ori",
-    "data_year"
+    "data_year",
+    "location"
 ]
 
 resolution_dict = {"state": "state",
@@ -109,7 +110,7 @@ def load_and_process_nibrs(years: str, resolution: str, hispanic: bool = False, 
     
     nibrs_arrests = nibrs_df[nibrs_df.arrest_type != "No Arrest"]
     
-    locations = nibrs_df[["state", "state_region", "FIPS"]].drop_duplicates()
+    locations = nibrs_df[["state", "state_region", "FIPS", "location"]].drop_duplicates()
     
     nibrs_df = nibrs_df.groupby(sorted(["age", "race", "sex"] + [resolution_dict[resolution]], key=str.casefold)).size().to_frame("incidents").reset_index()
     nibrs_arrests = nibrs_arrests.groupby(sorted(["age", "race", "sex"] + [resolution_dict[resolution]], key=str.casefold)).size().to_frame("incidents").reset_index()
@@ -132,7 +133,7 @@ if __name__ == "__main__":
 
     args=parser.parse_args()
 
-    df, df_a = load_and_process_nibrs(args.year, args.resolution, args.hispanic, all_incidents=args.all_incidents)
+    df, df_a = load_and_process_nibrs(args.year, args.resolution, args.hispanic, all_incidents=args.all_incidents, arrests=True)
     year = args.year if args.year else "2019"
     if df is not None:
         df.to_csv(data_path / "NIBRS" / f"incidents_processed_{year}.csv")

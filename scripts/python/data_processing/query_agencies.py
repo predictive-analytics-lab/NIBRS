@@ -3,6 +3,7 @@ from process_census_data import load_and_process_census_data
 from typing import Generator, List, Optional
 import pandas as pd
 from pathlib import Path
+from tqdm import tqdm
 
 data_dir = Path(__file__).resolve().parents[3] / "data_downloading" / "downloads"
 data_path = Path(__file__).resolve().parents[3] / "data"
@@ -34,35 +35,46 @@ def query_one_year(state_year_dir: Path) -> pd.DataFrame:
 
 
 def combine_agencies(years: List[str]) -> pd.DataFrame:
-    combined_df = None
-    for sy_dir in data_dir.iterdir():
+    combined_df = pd.DataFrame()
+    for sy_dir in tqdm(list(data_dir.iterdir())):
         data_year = sy_dir.stem.split("-")[-1]
         if data_year not in years:
             continue
-        if combined_df is None:
-            combined_df = query_one_year(sy_dir)
-            combined_df["year"] = data_year
-        else:
-            df = query_one_year(sy_dir)
-            df["year"] = data_year
-            combined_df = combined_df.append(df)
+        df = query_one_year(sy_dir)
+        df["year"] = data_year
+        combined_df = combined_df.append(df)
     return combined_df
-                       
+
+
 def coverage(agency_df: pd.DataFrame) -> pd.DataFrame:
+    # Add FIPS to agency df
     fips_ori_df = pd.read_csv(data_path / "misc" / "LEAIC.tsv", delimiter="\t", usecols=["ORI9", "FIPS"], dtype={'FIPS': object})
     fips_ori_df = fips_ori_df.rename(columns={"ORI9": "ori"})
-    agency_df = pd.merge(agency_df, fips_ori_df, on="ori")
+    agency_df = agency_df.merge(fips_ori_df, on="ori")
+    agency_df["year"] = agency_df.year.astype(str)
+    # Load Census Remove ORI duplicates
     census = load_and_process_census_data(list(agency_df.year.unique()))
-    census["year"] = census["year"].astype(str)
-    census = census.groupby(["ori", "year"]).sum().reset_index()
-    agency_df = pd.merge(agency_df, census, on=["ori", "year"])
-    coverage = (agency_df.groupby(["FIPS", "year"]).population.sum() / agency_df.groupby(["FIPS", "year"]).frequency.first()).clip(upper=1).to_frame("coverage").reset_index()
-    return coverage
+    census = census.drop(columns=["ori"])
+    census = census.drop_duplicates()
+    census["year"] = census.year.astype(str)
+
+    census = census.groupby(["FIPS", "year"]).frequency.sum().to_frame("frequency").reset_index()
+    
+    agency_df = agency_df.groupby(["FIPS", "year"]).population.sum().to_frame("population").reset_index()
+    
+    census = census.merge(agency_df, on=["FIPS", "year"], how="left")
+    census = census.fillna(0)
+    
+    census["coverage"] = census.population / census.frequency
+    
+    return census[["FIPS", "year", "coverage", "population", "frequency"]]
+
+
     
     
 
 if __name__ == "__main__":
-    df = combine_agencies([str(x) for x in range(2015, 2020)])
+    df = combine_agencies([str(x) for x in range(2012, 2020)])
     county_coverage = coverage(df)
     df.to_csv(data_path / "misc" / "agencies.csv")
     county_coverage.to_csv(data_path / "misc" / "county_coverage.csv")

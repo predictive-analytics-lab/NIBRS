@@ -13,16 +13,19 @@ with urlopen('https://raw.githubusercontent.com/plotly/datasets/master/geojson-c
 data_path = Path(__file__).parent.parent.parent.parent / "data"
 plot_path = Path(__file__).parent.parent.parent.parent / "choropleths"
 
-df = pd.read_csv(data_path / "output" / "selection_ratio_county_2019_smoothed.csv", dtype={'FIPS': object}, index_col=0)
+df = pd.read_csv(data_path / "output" / "selection_ratio_county_2019.csv", dtype={'FIPS': object}, index_col=0)
 # %%
-# df = df.round({'bwratio': 4, "selection_ratio": 4})
-df["selection_ratio"] = df["selection_ratio"] * 100_000
 
-fig = px.choropleth(df, geojson=counties, locations='FIPS', color="selection_ratio",
+df["selection_ratio_log10"] = np.log10(df["selection_ratio"])
+df = df.round({'ci': 3, "selection_ratio": 3})
+
+df["slci"] = df["selection_ratio"].astype(str) + " ± " + df["ci"].astype(str)
+
+fig = px.choropleth(df, geojson=counties, locations='FIPS', color="selection_ratio_log10",
                            scope="usa",
-                           range_color=(-2, 2),
-                           hover_data=["incidents", "bwratio"],
-                           labels={"selection_ratio": 'Incident Ratios  (log10) by Race (Black/White)',
+                           range_color=(-1, 1),
+                           hover_data=["slci", "incidents", "bwratio"],
+                           labels={"slci": 'Selection Ratios by Race (Black/White) with CIs',
                             'incidents': "Number of recorded Incidents",
                             "bwratio": "Black / White Ratio"},
                            color_continuous_scale = "RdBu"
@@ -30,7 +33,7 @@ fig = px.choropleth(df, geojson=counties, locations='FIPS', color="selection_rat
 fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
 fig.update_layout(geo=dict(bgcolor= 'rgba(0,0,0,0)'))
 
-fig.write_html(plot_path / "county_selection_ratio_smoothed_sub.html")
+fig.write_html(plot_path / "county_selection_ratio_cis.html")
 # %%
 
 df = pd.read_csv(data_path / "output" / "selection_ratio_state_2019.csv", index_col=0)

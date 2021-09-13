@@ -208,14 +208,11 @@ def get_county_weights(state_amat: np.ndarray, max_path_length: int = 5, distanc
     np.fill_diagonal(new_weighted_amat, 1)
     return new_weighted_amat
 
-def smooth_census(census_df: pd.DataFrame) -> gpd.GeoDataFrame:
+def smooth_census(census_df: pd.DataFrame, urban: bool, poverty: bool) -> gpd.GeoDataFrame:
     county_shp = gpd.read_file(data_path / "misc" / "us-county-boundaries.geojson")
-    smoothed_df = None
+    smoothed_df = pd.DataFrame()
     for state in census_df.state.unique():
-        if smoothed_df is not None:
-            smoothed_df = smoothed_df.append(smooth_census_state(census_df[census_df.state == state], county_shp))
-        else:
-            smoothed_df = smooth_census_state(census_df[census_df.state == state], county_shp)
+            smoothed_df = smoothed_df.append(smooth_census_state(census_df[census_df.state == state], county_shp, urban=urban, poverty=poverty), ignore_index=True)
     return smoothed_df
 
 def filter_urban(df: pd.DataFrame, urban_level: int, coverage_required: float = 0.5) -> Tuple[pd.DataFrame, pd.DataFrame]:
@@ -223,18 +220,23 @@ def filter_urban(df: pd.DataFrame, urban_level: int, coverage_required: float = 
     urban_codes.rename(columns={"FIPS code":"FIPS", "2013 code": "urban_code"}, inplace=True)
     urban_codes["FIPS"] = urban_codes.FIPS.apply(lambda x: str(x).rjust(5, "0"))
     df = pd.merge(df, urban_codes, on="FIPS", how="left")
-    coverage = pd.read_csv(data_path / "misc" / "county_coverage.csv", dtype=str)
+    coverage = pd.read_csv(data_path / "misc" / "county_coverage.csv", dtype=str, usecols=["FIPS", "coverage"])
     df = pd.merge(df, coverage, on="FIPS", how="left")
     condition = (df.urban_code <= urban_level) & (df.coverage.astype(float) > coverage_required)
     return df[~condition], df[condition]
 
-def smooth_census_state(state_df: pd.DataFrame, county_gdf: gpd.GeoDataFrame) -> pd.DataFrame:
+def smooth_census_state(state_df: pd.DataFrame, county_gdf: gpd.GeoDataFrame, urban: bool = False, poverty: bool = False) -> pd.DataFrame:
     state_df, urban_df = filter_urban(state_df, 2)
     if len(state_df) <= 0:
         return urban_df
-    joiner = state_df.groupby(["FIPS", "age", "race", "sex"]).first().sort_values(by=["age", "race", "sex"])
+    dem_vars = ["age", "race", "sex"]
+    if urban:
+        dem_vars += ["urbancounty"]
+    if poverty:
+        dem_vars += ["poverty"]
+    joiner = state_df.groupby(["FIPS", *dem_vars]).first().sort_values(by=dem_vars)
     joiner = joiner.drop(["ori"], axis=1)
-    state_df_p = state_df.pivot_table(index=["FIPS"], columns=["age", "race", "sex"], values="frequency")
+    state_df_p = state_df.pivot_table(index=["FIPS"], columns=dem_vars, values="frequency")
     state_df = state_df[["FIPS", "ori"]].drop_duplicates()
     state_gdf_p = join_with_counties(state_df_p.reset_index(), county_gdf).sort_values(by=["FIPS"])
     qW = Queen.from_dataframe(state_gdf_p)
@@ -305,7 +307,7 @@ def main(resolution: str, year: str, smooth: bool, ci: Optional[Literal['none', 
         population_df = census_df.copy()
                 
         if smooth:
-            census_df = smooth_census(census_df)
+            census_df = smooth_census(census_df, urban=urban, poverty=poverty)
             nibrs_df = smooth_nibrs(nibrs_df)
             
         ##### END DATA LOADING ######
