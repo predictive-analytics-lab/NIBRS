@@ -70,11 +70,7 @@ def query_one_state_year(year_dir: Path) -> pd.DataFrame:
     }, na_action="ignore")
     criminal_act_df["criminal_act"] = criminal_act_df["criminal_act"].fillna(0)
     offense_df = read_csv("offense", usecols=["offense_id", "incident_id", "offense_type_id", "location_id"])
-    """			when no3.location_id in (13, 18) then 'street'
-			when no3.location_id in (8, 7, 23, 12) then 'store'
-			when no3.location_id = 20 then 'home'
-			when no3.location_id = 14 then 'hotel/motel'
-			when no3.location_id = 41 then 'elementary school'"""
+
     offense_df["location"] = offense_df["location_id"].map({
         13: "street",
         18: "street",
