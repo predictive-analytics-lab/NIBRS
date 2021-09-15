@@ -4,19 +4,21 @@ args <- commandArgs(trailingOnly = TRUE)
 renv::restore()
 
 # TODO: revise
-if(length(args)!=3){
+if(length(args)!=5){
   poverty <- 0
   urban <- 0
-  hispanic_included <- 0
-  year_min <- 2012
+  hispanic_included <- 1
+  aggregate <- 0
+  year_min <- 2010
   year_max <- 2019
 } else{
   print(args)
   poverty <- ifelse(args[1]==1, 1, 0)
   urban <- ifelse(args[2]==1, 1, 0)
   hispanic_included <- ifelse(args[3]==1, 1, 0)
-  year_min <- ifelse(!is.na(args[4]), args[4], 2012)
-  year_max <- ifelse(!is.na(args[5]), args[5], 2019)
+  aggregate <- ifelse(args[4]==1, 1, 0)
+  year_min <- ifelse(!is.na(args[5]), args[5], 2010)
+  year_max <- ifelse(!is.na(args[6]), args[6], 2019)
 }
 
 library(dplyr)
@@ -160,7 +162,7 @@ df <- df %>%
 
 
 
-if(hispanics_included == 1){
+if(hispanic_included == 1){
 
   # impute missing data
   imputed_df <- missRanger(df %>% select(NEWRACE2, IRFAMIN3, sex, age, usage_ever, poverty_level, is_urban, usage_agefirsttime), pmm.k = 3, num.trees = 100)
@@ -227,22 +229,22 @@ if(poverty == 1)  vars_group <- c(vars_group, 'poverty_level')
 if(urban == 1)  vars_group <- c(vars_group, 'is_urban')
 
 # TODO: look at how variance is computed without the replicate weights
+if(aggregate!=1) vars_group <- c('year', vars_group)
 stats_df <- df_srv %>%
-  group_by(year == 2012) %>%
    group_by(across(all_of(vars_group))) %>%
    summarise(
      ever_used = survey_mean(usage_ever, na.rm = TRUE),
-     mean_usage_days = survey_mean(usage_days, na.rm = TRUE)
+     #mean_usage_days = survey_mean(usage_days, na.rm = TRUE),
+     prob_usage_one_dat = survey_mean(usage_days/30, na.rm = TRUE)
    )
 
 filename <- here('scripts', 'R', 'downloaded_data',
-                 glue('nsduh_usage_{min(years)}_{max(years)}{ifelse(hispanic_included == 1, "_hispincluded", "_nohisp")}{ifelse(poverty==1, "_poverty", "")}{ifelse(urban==1, "_urban", "")}'))
+                 glue('nsduh_usage_{ifelse(aggregate==1, "aggregate_", "")}{min(years)}_{max(years)}{ifelse(hispanic_included == 1, "_hispincluded", "_nohisp")}{ifelse(poverty==1, "_poverty", "")}{ifelse(urban==1, "_urban", "")}.csv'))
 
 stats_df %>%
   write_csv(filename)
 
 
-cat(filename)
 # old code ----
 
 # # TODO: currently assuming MCAR
