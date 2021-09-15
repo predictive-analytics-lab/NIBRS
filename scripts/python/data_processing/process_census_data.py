@@ -10,7 +10,7 @@ import functools
 
 from pathlib import Path
 from typing import List, Union
-from matplotlib import pyplot as plt
+from matplotlib import pyplot as plt, use
 import pandas as pd
 import numpy as np
 
@@ -133,7 +133,7 @@ def load_and_process_census_data(years: Union[str, List[str]]) -> pd.DataFrame:
 
 
     #LOAD DATA
-    df = pd.read_csv(data_path / "census" / f"census-2019-county.csv", encoding="ISO-8859-1", engine='python', usecols=[
+    df = pd.read_csv(data_path / "census" / f"census-2019-county.csv", encoding="ISO-8859-1", index_col=False, engine='python', usecols=[
                     "AGEGRP", "COUNTY", "STATE", "WA_MALE", "WA_FEMALE", "BA_MALE", "BA_FEMALE", "YEAR"], dtype={'STATE': object, "COUNTY": object})  # RACES NOT IN COMBINATION
 
     # FILTER YEARS
@@ -218,16 +218,54 @@ def load_and_process_census_data(years: Union[str, List[str]]) -> pd.DataFrame:
 
     return df
 
+def add_poverty_info(df: pd.DataFrame):
+    poverty_df = pd.read_csv(data_path / "misc" / "poverty_data.csv", index_col=False, dtype={"FIPS":str})
+    poverty_df = poverty_df.rename(columns={"poverty_income higher than poverty level":"income higher than poverty level",
+                               "poverty_living in poverty":"living in poverty"})
+    df = df.merge(poverty_df, how="left", on=["FIPS", "age", "race", "sex"])
+    df["income higher than poverty level"] *= df.frequency
+    df["living in poverty"] *= df.frequency
+    df = df.drop(columns=["frequency"])
+    df = pd.melt(df, id_vars=["ori", "FIPS", "age", "race", "sex"], value_vars=["living in poverty", "income higher than poverty level"], var_name="poverty", value_name="frequency")
+    return df
+
+def add_urban_info(df: pd.DataFrame):    
+    df_pre_2015 = df[df.year < 2015]
+    df_post_2015 = df[df.year >= 2015]
+    
+    def _add_urban(df_year: pd.DataFrame, filename_year: str) -> pd.DataFrame:
+        if len(df_year) == 0:
+            return pd.DataFrame()
+        urban_df = pd.read_csv(data_path / "misc" / f"urban_codes_x_county_{filename_year}.csv", index_col=False, dtype={"FIPS":str}, usecols=["FIPS", "urbancounty"])
+        return df_year.merge(urban_df, how="left", on="FIPS")
+    
+    df_pre_2015 = _add_urban(df, "2003")
+    df_post_2015 = _add_urban(df, "2013")
+    return df_pre_2015.append(df_post_2015)
+
+
+def get_census_data(years: str, poverty: bool, urban: bool):
+    df = load_and_process_census_data(years)
+    if poverty:
+        df = add_poverty_info(df)
+    if urban:
+        df = add_urban_info(df)
+    return df
+
 
 if __name__ == "__main__":
     parser=argparse.ArgumentParser()
 
     parser.add_argument("--year", help="year, or year range.", default=2019)
+    parser.add_argument("--poverty", type=bool, help="Add poverty information.", default=True)
+    parser.add_argument("--urban", type=bool, help="Add rural/urban information.", default=True)
+
     # parser.add_argument("--coverage", help="population scaled by coverage", default=False)
 
     args=parser.parse_args()
-
-
-    df = load_and_process_census_data(str(args.year))
+        
+    df = get_census_data(str(args.year), args.poverty, args.urban)
+    
     year = args.year if args.year else "2019"
     df.to_csv(data_path / "census" / f"census_processed_{year}.csv")
+

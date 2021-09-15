@@ -62,7 +62,7 @@ state_abbreviations = [s.split(",")[1].strip() for s in """Alabama, AL
 def download_data():
     years = range(2012, 2020)
     states = state_abbreviations
-    download_location = Path(__file__).parent / 'downloads'
+    download_location = Path(__file__).parent / 'downloads' / 'nibrs'
     for year in years:
         for state in states:
             if (download_location / f"{state}-{year}").exists():

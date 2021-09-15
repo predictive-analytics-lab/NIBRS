@@ -1,146 +1,19 @@
-aiohttp==3.7.4.post0
-appdirs==1.4.4
-async-timeout==3.0.1
-atpublic==2.3
-attrs==21.2.0
-autopep8==1.5.7
-backcall @ file:///home/ktietz/src/ci/backcall_1611930011877/work
--e git+git@github.com:Stoffle/BayNet.git@8dd3f2117dc0babb8be9df0e31a18d163556a781#egg=BayNet
-Bottleneck==1.3.2
-cachetools==4.2.2
-certifi==2021.5.30
-cffi==1.14.6
-chardet==4.0.0
-click==8.0.1
-colorama==0.4.4
-commonmark==0.9.1
-configobj==5.0.6
-cryptography==3.4.7
-cycler==0.10.0
-decorator==4.4.2
-dictdiffer==0.8.1
-diskcache==5.2.1
-distro==1.5.0
-dpath==2.0.1
-dulwich==0.20.23
+beautifulsoup4==4.9.3
 dvc==2.5.4
-fastds==0.2.0
-flatten-dict==0.4.0
-flufl.lock==3.2
-fsspec==2021.6.1
-ftfy==6.0.3
-funcy==1.16
-future==0.18.2
-gcsfs==2021.6.1
-gitdb==4.0.7
-GitPython==3.1.18
-google-api-core==1.31.1
-google-api-python-client==2.15.0
-google-auth==1.34.0
-google-auth-httplib2==0.1.0
-google-auth-oauthlib==0.4.5
-googleapis-common-protos==1.53.0
-grandalf==0.6
-graphviz==0.17
+geopandas==0.9.0
 htmlmin==0.1.12
-httplib2==0.19.1
-humanize==3.9.0
-idna==2.10
-ImageHash==4.2.1
-ipykernel @ file:///tmp/build/80754af9/ipykernel_1607452791405/work/dist/ipykernel-5.3.4-py3-none-any.whl
-ipython @ file:///tmp/build/80754af9/ipython_1617120888991/work
-ipython-genutils @ file:///tmp/build/80754af9/ipython_genutils_1606773439826/work
-jedi @ file:///tmp/build/80754af9/jedi_1606932531272/work
-Jinja2==3.0.1
-joblib==1.0.1
-jsonpath-ng==1.5.3
-jsonschema==3.2.0
-jupyter-client @ file:///tmp/build/80754af9/jupyter_client_1616770841739/work
-jupyter-core @ file:///tmp/build/80754af9/jupyter_core_1612213314396/work
-kiwisolver==1.3.1
-mailchecker==4.0.10
-MarkupSafe==2.0.1
+ipykernel==5.3.4
+ipython==7.26.0
+ipython-genutils==0.2.0
+mapclassify==2.4.3
 matplotlib==3.4.2
-missingno==0.5.0
-multidict==5.1.0
-multimethod==1.4
-mypy-extensions==0.4.3
-nanotime==0.5.2
-nbformat==5.1.3
-networkx==2.5.1
-numpy==1.21.1
-oauth2client==4.1.3
-oauthlib==3.1.1
-packaging==21.0
+matplotlib-inline==0.1.2
 pandas==1.3.1
 pandas-profiling==3.0.0
-parso==0.7.0
-pathspec==0.8.1
-pexpect @ file:///tmp/build/80754af9/pexpect_1605563209008/work
-phik==0.12.0
-phonenumbers==8.12.27
-pickleshare @ file:///tmp/build/80754af9/pickleshare_1606932040724/work
-Pillow==8.3.1
+pip==21.2.4
 plotly==5.1.0
-ply==3.11
-progress==1.5
-prompt-toolkit @ file:///tmp/build/80754af9/prompt-toolkit_1616415428029/work
-protobuf==3.17.3
-psutil==5.8.0
-ptyprocess @ file:///tmp/build/80754af9/ptyprocess_1609355006118/work/dist/ptyprocess-0.7.0-py2.py3-none-any.whl
-pyasn1==0.4.8
-pyasn1-modules==0.2.8
-pycodestyle==2.7.0
-pycparser==2.20
-pydantic==1.8.2
-pydot==1.4.2
-PyDrive2==1.8.3
-pygit2==1.6.1
-Pygments @ file:///tmp/build/80754af9/pygments_1621606182707/work
-pygtrie==2.4.2
-PyInquirer==1.0.3
-pyOpenSSL==20.0.1
-pyparsing==2.4.7
-pyrsistent==0.18.0
-python-benedict==0.24.0
-python-dateutil @ file:///tmp/build/80754af9/python-dateutil_1626374649649/work
-python-fsutil==0.5.0
-python-igraph==0.7.1.post6
-python-slugify==5.0.2
-pytz==2021.1
-PyWavelets==1.1.1
-PyYAML==5.4.1
-pyzmq==20.0.0
-regex==2021.7.6
-requests==2.25.1
-requests-oauthlib==1.3.0
-rich==10.5.0
-rsa==4.7.2
-ruamel.yaml==0.17.10
-ruamel.yaml.clib==0.2.6
 scipy==1.7.0
 seaborn==0.11.1
-shortuuid==1.0.1
-shtab==1.3.8
-six @ file:///tmp/build/80754af9/six_1623709665295/work
-smmap==4.0.0
-tabulate==0.8.9
-tangled-up-in-unicode==0.1.0
-tenacity==8.0.1
-text-unidecode==1.3
-toml==0.10.2
-tomli==1.1.0
-tornado @ file:///tmp/build/80754af9/tornado_1606942317143/work
 tqdm==4.61.2
-traitlets @ file:///home/ktietz/src/ci/traitlets_1611929699868/work
 typing-extensions==3.10.0.0
-uritemplate==3.0.1
-urllib3==1.26.6
-validators==0.18.2
-visions==0.7.1
-voluptuous==0.12.1
-wcwidth @ file:///tmp/build/80754af9/wcwidth_1593447189090/work
-xarray==0.19.0
-xmltodict==0.12.0
-yarl==1.6.3
-zc.lockfile==2.0
+libpysal

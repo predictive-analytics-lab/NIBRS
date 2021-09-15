@@ -5,6 +5,8 @@ library(srvyr)
 library(survey)
 library(glue)
 library(readxl)
+library(here)
+library(vroom)
 
 # useful links
 # https://walker-data.com/tidycensus/articles/pums-data.html for standard errors etc
@@ -56,10 +58,10 @@ get_pums_x_state <- function(state_chosen){
     try()
 }
 
-write_poverty_data <- function(state_chosen){
+download_poverty_data <- function(state_chosen){
 
   files_already_present <- list.files(here('scripts', 'R', 'downloaded_data', 'poverty_data_x_state'))
-  if(glue('{state_chosen}.csv') %in% files_already_present){
+  if(glue('{state_chosen}_rawdata.csv') %in% files_already_present){
     return()
   }
 
@@ -67,11 +69,6 @@ write_poverty_data <- function(state_chosen){
   while(is.null(pums) | class(pums)[1] == "try-error"){
     pums <- get_pums_x_state(state_chosen)
   }
-
-  # pums filter
-  pums <- pums %>%
-    filter(RAC1P_label == "White alone" | RAC1P_label == "Black or African American alone") %>%
-    filter(HISP_label == "Not Spanish/Hispanic/Latino")
 
   # recode
   pums <- pums %>%
@@ -107,8 +104,9 @@ write_poverty_data <- function(state_chosen){
       ),
       poverty_level = case_when(
         POVPIP >= 0 & POVPIP <= 100 ~ 'living in poverty',
-        POVPIP > 100 & POVPIP <= 200 ~ 'income up to 2x poverty threshold',
-        POVPIP > 200 ~ 'income more than 2x poverty threshold'
+        POVPIP > 100 ~ 'income higher than poverty level'
+        #POVPIP > 100 & POVPIP <= 200 ~ 'income up to 2x poverty threshold',
+        #POVPIP > 200 ~ 'income more than 2x poverty threshold'
       ),
       RAC1P_label = case_when(
         RAC1P_label == "White alone" ~ 'white',
@@ -117,13 +115,33 @@ write_poverty_data <- function(state_chosen){
       SEX_label = tolower(SEX_label)
     )
 
+  pums <- pums %>%
+    mutate(puma_all = glue('{ST}{PUMA}'))
+
+  dir.create(here('scripts', 'R', 'downloaded_data', 'poverty_data_x_state'))
+  v <- pums %>%
+    write_csv(here('scripts', 'R', 'downloaded_data', 'poverty_data_x_state', glue('{state_chosen}_rawdata.csv')))
+
+}
+
+get_poverty_rates_x_state <- function(state_chosen, hisp_included=TRUE){
+
+  pums <- vroom(here('scripts', 'R', 'downloaded_data', 'poverty_data_x_state', glue('{state_chosen}_rawdata.csv')),
+                col_types = cols())
+
   puma2ct <- read_csv("https://www2.census.gov/geo/docs/maps-data/data/rel/2010_Census_Tract_to_2010_PUMA.txt")
   puma2ct <- puma2ct %>%
     mutate(fips_all = glue('{STATEFP}{COUNTYFP}'),
            puma_all = glue('{STATEFP}{PUMA5CE}')) %>%
     filter(STATEFP %in% unique(pums$ST))
+
   pums <- pums %>%
-    mutate(puma_all = glue('{ST}{PUMA}'))
+    filter(RAC1P_label == "white" | RAC1P_label == "black")
+
+  if(!hisp_included){
+    pums <- pums %>% filter(HISP_label == "Not Spanish/Hispanic/Latino")
+  }
+
   pums_srv <- pums %>%
     to_survey() %>%
     # TODO: impute outcomes
@@ -132,24 +150,30 @@ write_poverty_data <- function(state_chosen){
   county_poverty <- unique(puma2ct$fips_all) %>%
     map( ~  .x %>% get_county_poverty_by_demo(., pums_srv, puma2ct))
 
-  dir.create(here('scripts', 'R', 'downloaded_data', 'poverty_data_x_state'))
-  county_poverty %>%
+  v <- county_poverty %>%
     bind_rows() %>%
     rename(sex = SEX_label, race = RAC1P_label) %>%
-    write_csv(here('scripts', 'R', 'downloaded_data', 'poverty_data_x_state', glue('{state_chosen}.csv')))
+    write_csv(here('scripts', 'R', 'downloaded_data', 'poverty_data_x_state', glue('{state_chosen}_{ifelse(hisp_included,"hisp","nohisp")}.csv')))
+
 }
 
 # download, save, and merge all files ----
 
+hisp_included <- FALSE
+
 state.abb %>%
-  map(~ write_poverty_data(.x))
+  map(~ download_poverty_data(.x))
+
+state.abb %>%
+  map(~ get_poverty_rates_x_state(., hisp_included=hisp_included))
 
 # merge all files
-files_to_load <- list.files(here('scripts', 'R', 'downloaded_data', 'poverty_data_x_state'),
-           full.names = TRUE) %>% as.list()
-names(files_to_load) <- str_replace(list.files(here('scripts', 'R', 'downloaded_data', 'poverty_data_x_state')), '.csv', '')
+files_to_load <- state.abb %>%
+  map(~ here('scripts', 'R', 'downloaded_data', 'poverty_data_x_state', glue('{.x}_{ifelse(hisp_included,"hisp","nohisp")}.csv')))
+names(files_to_load) <- state.abb
+
 files_to_load %>%
-  map_dfr( ~ vroom(.x) %>% mutate(FIPS = as.character(FIPS)), .id = 'state') %>%
+  map_dfr( ~ vroom(.x, col_types = cols()) %>% mutate(FIPS = as.character(FIPS)), .id = 'state') %>%
   drop_na() %>%
   rename(age = age_census_largebins) %>%
   # rename states to full names
@@ -164,7 +188,25 @@ files_to_load %>%
   pivot_wider(names_from = poverty_level,
               values_from = proportion,
               names_prefix = 'poverty_') %>%
-  write_csv(here('scripts', 'R', 'downloaded_data', 'poverty_data.csv'))
+  write_csv(here('scripts', 'R', 'downloaded_data', glue('poverty_data_{ifelse(hisp_included,"hisp","nohisp")}.csv')))
+
+
+# checks for counties vs pumas
+# counties that contain more than one puma
+# x1 <- puma2ct %>% group_by(STATEFP, COUNTYFP) %>% summarise(n = length(unique(PUMA5CE))) %>%
+#   filter(n > 1)
+# x2 <- puma2ct %>% group_by(STATEFP, PUMA5CE) %>% mutate(n = length(unique(COUNTYFP))) %>%
+#   filter(n > 1)
+# x1 %>% inner_join(x2, by = c('STATEFP', 'COUNTYFP')) %>%
+#   distinct(STATEFP, COUNTYFP)
+#
+# puma2ct %>% filter(PUMA5CE == '00200' & STATEFP == '01') %>%
+#   distinct(COUNTYFP, PUMA5CE)
+#
+# puma2ct %>% filter(COUNTYFP == '089' & STATEFP == '01') %>%
+#   distinct(COUNTYFP, PUMA5CE)
+
+
 
 
 

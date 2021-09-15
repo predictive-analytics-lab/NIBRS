@@ -1,9 +1,11 @@
 """This python file loads the NSDUH dataset and formats it for the project needs."""
 
-from typing import Literal
+from scripts.python.data_processing.process_nibrs_data import load_and_process_nibrs
+from typing import Literal, List, Union
 import pandas as pd
 from pathlib import Path
 import argparse
+import csv
 
 data_path = Path(__file__).parent.parent.parent.parent / "data"
 
@@ -45,8 +47,8 @@ age_dict = {
 
 poverty_dict = {
     1: "living in poverty",
-    2: "income up to 2x poverty threshold",
-    3: "income more than 2x poverty threshold"
+    2: "income higher than poverty level",
+    3: "income higher than poverty level"
 }
 
 urbancounty_dict = {
@@ -62,6 +64,9 @@ usage_column_dict = {
     "crack": "CRKUS30A",
     "meth": "METHAM30N"
 }
+
+
+drug_types = Literal["cannabis", "cocaine", "crack", "meth"]
 
 
 def usage(n):
@@ -81,33 +86,37 @@ def binary_usage(n):
 ######### Data Loading ##########
 
 
-def join_years(years: str, drug: Literal["cannabis", "cocaine", "crack", "meth"]) -> pd.DataFrame:
+def join_years(years: Union[str, List[Union[str, int]]], drug: drug_types) -> pd.DataFrame:
     """
     Function which converts a string range of years to a list of year ints.
     Following this, each corresponding NSDUH year is loaded and merged with the
     NSDUH data.
     """
-    if "-" not in years:
-        return load_and_process_nsduh(int(years), drug)
-    years = years.split("-")
-    years = range(int(years[0]), int(years[1]) + 1)
+    
+    if isinstance(years, str):
+        if "-" not in years:
+            return load_and_process_nsduh(int(years), drug)
+        years = years.split("-")
+        years = range(int(years[0]), int(years[1]) + 1)
     
     assert min(years) >= 2012 and max(years) <= 2019, "Invalid year range. Valid range is: 2012-2019."
     assert drug in ["cannabis", "cocaine", "crack", "meth"], "Invalid drug type, must be one of [cannabis, cocaine, crack, meth]"
 
     # Load NSDUH data
-    nsduh_df = load_and_process_nsduh(years[0], drug)
-
-    # Load each year of NSDUH data
-    for year in years[1:]:
-        nsduh_df = nsduh_df.append(load_and_process_nsduh(year, drug), ignore_index=True)
-
+    nsduh_df = pd.concat([load_and_process_nibrs(year) for year in years], ignore_index=True)
     return nsduh_df
 
-def load_and_process_nsduh(year: int, drug: str) -> pd.DataFrame:
+
+def load_and_process_nsduh(year: int, drug: drug_types) -> pd.DataFrame:
     # This is the NSDUH dataset. Only AGE/RACE/SEX/MJDAY30A are selected.
+    with open(data_path / "NSDUH" / f"NSDUH_{year}_Tab.tsv", newline='') as f:
+        csv_reader = csv.reader(f)
+        csv_headings = next(csv_reader)[0].split("\t")
+    poverty_var = next(x for x in csv_headings if "poverty" in x.lower())
+    coutyp_var = next(x for x in csv_headings if "coutyp" in x.lower())
+
     nsduh_df = pd.read_csv(data_path / "NSDUH" / f"NSDUH_{year}_Tab.tsv",
-                        sep="\t", usecols=columns_to_use+[usage_column_dict[drug]])
+                        sep="\t", usecols=columns_to_use+[usage_column_dict[drug], poverty_var, coutyp_var])
 
     nsduh_df.rename(columns={
         "NEWRACE2": "race",
@@ -115,7 +124,9 @@ def load_and_process_nsduh(year: int, drug: str) -> pd.DataFrame:
         "IRSEX": "sex",
         "POVERTY3": "poverty",
         "COUTYP4": "urbancounty",
-        usage_column_dict[drug]: "usage_30day"
+        usage_column_dict[drug]: "usage_30day",
+        poverty_var: "poverty",
+        coutyp_var: "urbancounty"
     }, inplace=True)
 
     nsduh_df["race"] = nsduh_df.race.map(race_dict)
@@ -131,17 +142,17 @@ def load_and_process_nsduh(year: int, drug: str) -> pd.DataFrame:
     return nsduh_df
 
 
-if __name__ == "__main__":
-    parser=argparse.ArgumentParser()
+# if __name__ == "__main__":
+#     parser=argparse.ArgumentParser()
 
-    parser.add_argument("--year", help="year, or year range.", default="2019")
-    parser.add_argument("--drug", help="drug type", default="cannabis")
+#     parser.add_argument("--year", help="year, or year range.", default="2019")
+#     parser.add_argument("--drug", help="drug type", default="cannabis")
 
-    args=parser.parse_args()
+#     args=parser.parse_args()
 
-    df = join_years(args.year, args.drug)
+#     df = join_years(args.year, args.drug)
 
-    df.to_csv(data_path / "NSDUH" / f"nsduh_processed_{args.drug}_{args.year}.csv")
+#     df.to_csv(data_path / "NSDUH" / f"nsduh_processed_{args.drug}_{args.year}.csv")
 
 
 

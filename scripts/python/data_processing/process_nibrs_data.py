@@ -3,16 +3,15 @@ This python script processes, and modifies, the NIBRS data output from the SQL q
 
 """
 import functools
-from typing import List, Tuple
+from typing import List, Optional, Tuple
+from typing_extensions import Literal
 import pandas as pd
 import numpy as np
 from pathlib import Path
 import argparse
-import glob
-import warnings
 
-data_path = Path(__file__).parent.parent.parent.parent / "data"
-data_name = data_path / "NIBRS"/ "raw" / "alldrugs_allyears.csv"
+data_dir = Path(__file__).parent.parent.parent.parent / "data"
+data_path = data_dir / "NIBRS"/ "raw" / "unfiltered_nibrs_query.csv"
 
 cols_to_use = [
     "race",
@@ -43,21 +42,21 @@ def age_cat(age: int) -> str:
 #     for year in years:
 #         try:
 #             if df is None:
-#                 df = pd.read_csv(data_path / "NIBRS" / "raw" / script_name(year), usecols=cols_to_use)
+#                 df = pd.read_csv(data_dir / "NIBRS" / "raw" / script_name(year), usecols=cols_to_use)
 #             else:
-#                 df = df.append(pd.read_csv(data_path / "NIBRS" / "raw" / script_name(year), usecols=cols_to_use))
+#                 df = df.append(pd.read_csv(data_dir / "NIBRS" / "raw" / script_name(year), usecols=cols_to_use))
 #         except FileNotFoundError:
 #             years.remove(year)
 #             print(f"No NIBRS data for {year}")
 #     return df, years
 
-def disjunction(*conditions):
-    """
-    Function which takes a list of conditions and returns the logical OR of them.
-    """
-    return functools.reduce(np.logical_or, conditions)
-
-def load_and_process_nibrs(years: str, resolution: str, hispanic: bool) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def load_and_process_nibrs(
+        years: str,
+        resolution: str,
+        filter_hispanic: bool = True,
+        filter_offenses: bool = True,
+        drug: Optional[Literal["cannabis", "crack", "cocaine", "meth", "heroin"]] = None,
+    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     This function loads the current nibrs dataset, and processes it.
     Additionally, it adds the FIPS code and state subregion code to the data.
@@ -78,22 +77,31 @@ def load_and_process_nibrs(years: str, resolution: str, hispanic: bool) -> Tuple
         except:
             print("invalid year format. Run appropriate SQL script.")
 
+    nibrs_df = pd.read_csv(data_path)
 
-    nibrs_df = pd.read_csv(data_name, usecols=cols_to_use)
-            
-    nibrs_df = nibrs_df[disjunction(*[nibrs_df.data_year == yi for yi in years])]
-    
+    # Filter dataframe
+    if filter_offenses:
+        nibrs_df = nibrs_df[(nibrs_df['other_offense'] == False) & (nibrs_df['other_criminal_act_count'] == 0)]
+    if filter_hispanic:
+        nibrs_df = nibrs_df[nibrs_df["ethnicity_id"] != 1]
+    nibrs_df.drop(columns=["other_offense", "other_criminal_act_count", "ethnicity_id", ])
+    if drug is not None:
+        # For now just allow a single drug to be specified
+        nibrs_df = nibrs_df[(nibrs_df["unique_drug_type_count"] == 1) & (nibrs_df[f"{drug}_count"] > 0)]
+
+
+    nibrs_df = nibrs_df[nibrs_df.data_year.isin(years)]
     nibrs_df["age_num"] = nibrs_df.age_num.apply(age_cat)
     nibrs_df["sex_code"] = nibrs_df.sex_code.map({"F": "female", "M": "male"})
 
     nibrs_df.rename(columns={"sex_code": "sex", "age_num": "age", "arrest_type_name": "arrest_type"}, inplace=True)
 
-    fips_ori_df = pd.read_csv(data_path / "misc" / "LEAIC.tsv", delimiter="\t",
+    fips_ori_df = pd.read_csv(data_dir / "misc" / "LEAIC.tsv", delimiter="\t",
                             usecols=["ORI9", "FIPS"], dtype={'FIPS': object})
 
     fips_ori_df = fips_ori_df.rename(columns={"ORI9": "ori"})
 
-    subregion_df = pd.read_csv(data_path / "misc" / "subregion_counties.csv",
+    subregion_df = pd.read_csv(data_dir / "misc" / "subregion_counties.csv",
                             dtype={'FIPS': object}, usecols=["State", "Region", "FIPS"])
 
     nibrs_df = pd.merge(nibrs_df, fips_ori_df, on="ori")
@@ -108,27 +116,28 @@ def load_and_process_nibrs(years: str, resolution: str, hispanic: bool) -> Tuple
     
     locations = nibrs_df[["state", "state_region", "FIPS"]].drop_duplicates()
     
-    nibrs_df = nibrs_df.groupby(sorted(["age", "race", "sex"] + [resolution_dict[resolution]], key=str.casefold)).size().to_frame("incidents").reset_index()
-    nibrs_arrests = nibrs_arrests.groupby(sorted(["age", "race", "sex"] + [resolution_dict[resolution]], key=str.casefold)).size().to_frame("incidents").reset_index()
+    nibrs_df = nibrs_df.groupby(sorted(["age", "race", "sex", resolution_dict[resolution]], key=str.casefold)).size().to_frame("incidents").reset_index()
+    nibrs_arrests = nibrs_arrests.groupby(sorted(["age", "race", "sex", resolution_dict[resolution]], key=str.casefold)).size().to_frame("incidents").reset_index()
     
     nibrs_df = nibrs_df.merge(locations, on=resolution_dict[resolution], how="inner")
     nibrs_arrests = nibrs_arrests.merge(locations, on=resolution_dict[resolution], how="inner")
-
+    
     return nibrs_df, nibrs_arrests
+
 
 if __name__ == "__main__":
     parser=argparse.ArgumentParser()
 
     parser.add_argument("--year", help="year, or year range.", default="2019")
     parser.add_argument("--resolution", help="Geographic resolution to aggregate incidents over.", default="state")
-    parser.add_argument("--hispanic", help="Whether to include hispanic individuals", default=False)
+    parser.add_argument("--all_offenses", help="Keep incidents with additional offenses.", default=False, action='store_true')
+    parser.add_argument("--keep_ethnicity", help="Whether to exclude individuals listed as hispanic", default=False, action='store_true')
+    parser.add_argument("--drug", help="Run for only a specific drug type", default="cannabis")
 
     args=parser.parse_args()
 
-    df, df_a = load_and_process_nibrs(args.year, args.resolution, args.hispanic == True)
-    year = args.year if args.year else "2019"
-    if df is not None:
-        df.to_csv(data_path / "NIBRS" / f"incidents_processed_{year}.csv")
-        df_a.to_csv(data_path / "NIBRS" / f"arrests_processed_{year}.csv")
+    df, df_a = load_and_process_nibrs(args.year, args.resolution, filter_hispanic=args.keep_ethnicity, filter_offenses=not args.all_offenses, drug=args.drug)
+    df.to_csv(data_dir / "NIBRS" / f"{args.drug}_incidents_processed_{args.year}.csv")
+    df_a.to_csv(data_dir / "NIBRS" / f"{args.drug}_arrests_processed_{args.year}.csv")
 
 
