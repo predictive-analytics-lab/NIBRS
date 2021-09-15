@@ -15,8 +15,8 @@ if(length(args)!=3){
   poverty <- ifelse(args[1]==1, 1, 0)
   urban <- ifelse(args[2]==1, 1, 0)
   hispanic_included <- ifelse(args[3]==1, 1, 0)
-  year_min <- ifelse(!is.null(args[4]), args[4], 2012)
-  year_max <- ifelse(!is.null(args[5]), args[5], 2019)
+  year_min <- ifelse(!is.na(args[4]), args[4], 2012)
+  year_max <- ifelse(!is.na(args[5]), args[5], 2019)
 }
 
 library(dplyr)
@@ -228,7 +228,7 @@ if(urban == 1)  vars_group <- c(vars_group, 'is_urban')
 
 # TODO: look at how variance is computed without the replicate weights
 stats_df <- df_srv %>%
-  filter(year == 2012) %>%
+  group_by(year == 2012) %>%
    group_by(across(all_of(vars_group))) %>%
    summarise(
      ever_used = survey_mean(usage_ever, na.rm = TRUE),
@@ -242,6 +242,7 @@ stats_df %>%
   write_csv(filename)
 
 
+cat(filename)
 # old code ----
 
 # # TODO: currently assuming MCAR

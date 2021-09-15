@@ -208,11 +208,11 @@ def get_county_weights(state_amat: np.ndarray, max_path_length: int = 5, distanc
     np.fill_diagonal(new_weighted_amat, 1)
     return new_weighted_amat
 
-def smooth_census(census_df: pd.DataFrame, urban: bool, poverty: bool) -> gpd.GeoDataFrame:
+def smooth_census(census_df: pd.DataFrame, urban: bool, poverty: bool, urban_filter: int) -> gpd.GeoDataFrame:
     county_shp = gpd.read_file(data_path / "misc" / "us-county-boundaries.geojson")
     smoothed_df = pd.DataFrame()
     for state in census_df.state.unique():
-            smoothed_df = smoothed_df.append(smooth_census_state(census_df[census_df.state == state], county_shp, urban=urban, poverty=poverty), ignore_index=True)
+            smoothed_df = smoothed_df.append(smooth_census_state(census_df[census_df.state == state], county_shp, urban=urban, poverty=poverty, urban_filter=urban_filter), ignore_index=True)
     return smoothed_df
 
 def filter_urban(df: pd.DataFrame, urban_level: int, coverage_required: float = 0.5) -> Tuple[pd.DataFrame, pd.DataFrame]:
@@ -225,8 +225,10 @@ def filter_urban(df: pd.DataFrame, urban_level: int, coverage_required: float = 
     condition = (df.urban_code <= urban_level) & (df.coverage.astype(float) > coverage_required)
     return df[~condition], df[condition]
 
-def smooth_census_state(state_df: pd.DataFrame, county_gdf: gpd.GeoDataFrame, urban: bool = False, poverty: bool = False) -> pd.DataFrame:
-    state_df, urban_df = filter_urban(state_df, 2)
+def smooth_census_state(state_df: pd.DataFrame, county_gdf: gpd.GeoDataFrame, urban: bool = False, poverty: bool = False, urban_filter: int = 2) -> pd.DataFrame:
+    if len(state_df.FIPS.unique()) == 1:
+        return state_df
+    state_df, urban_df = filter_urban(state_df, urban_filter)
     if len(state_df) <= 0:
         return urban_df
     dem_vars = ["age", "race", "sex"]
@@ -237,15 +239,37 @@ def smooth_census_state(state_df: pd.DataFrame, county_gdf: gpd.GeoDataFrame, ur
     joiner = state_df.groupby(["FIPS", *dem_vars]).first().sort_values(by=dem_vars)
     joiner = joiner.drop(["ori"], axis=1)
     state_df_p = state_df.pivot_table(index=["FIPS"], columns=dem_vars, values="frequency")
-    state_df = state_df[["FIPS", "ori"]].drop_duplicates()
+    locations = state_df[["state", "state_region", "FIPS"]].drop_duplicates()
     state_gdf_p = join_with_counties(state_df_p.reset_index(), county_gdf).sort_values(by=["FIPS"])
+    
     qW = Queen.from_dataframe(state_gdf_p)
     amat, _ = qW.full()
     county_weights = get_county_weights(amat)
+    
+    state_gdf_p = reporting(state_gdf_p)
+    state_gdf_p.loc[state_gdf_p.FIPS.isin(urban_df.FIPS.unique()), "reporting"] = "N"
+    indicies = np.nonzero((state_gdf_p.reporting == "Y").values)[0]
+    state_gdf_p = state_gdf_p.iloc[indicies, :]
+    state_gdf_p.drop(["reporting"], axis=1, inplace=True)
+    
+    if len(state_gdf_p) == 0:
+        return urban_df
+    
+    county_weights = county_weights[np.ix_(indicies, indicies)]
+
     state_gdf_p.iloc[:, 22:] = county_weights @ state_gdf_p.iloc[:, 22:].values
-    joiner["frequency"] = state_gdf_p.iloc[:, 22:].values.flatten("F")
-    state_df = pd.merge(state_df, joiner.reset_index(), how="left", on="FIPS")
-    return state_df.append(urban_df).reset_index()
+    state_gdf_p = state_gdf_p[["FIPS", *state_gdf_p.columns[22:].values]].melt(id_vars=["FIPS"], value_name="frequency")
+    
+    if urban:
+        state_gdf_p['age'], state_gdf_p['race'], state_gdf_p['sex'], state_gdf_p["urbancounty"] = state_gdf_p['variable'].str
+    elif poverty:
+        state_gdf_p['age'], state_gdf_p['race'], state_gdf_p['sex'], state_gdf_p["poverty"] = state_gdf_p['variable'].str
+    else:
+        state_gdf_p['age'], state_gdf_p['race'], state_gdf_p['sex'] = state_gdf_p['variable'].str
+        
+    state_gdf_p.drop(["variable"], axis=1, inplace=True)
+    state_gdf_p = state_gdf_p.merge(locations, on="FIPS", how="inner")
+    return state_gdf_p.append(urban_df).reset_index()
 
 def wilson_error(n_s: int, n: int, z = 1.96) -> Tuple[float, float]:
     """
@@ -284,7 +308,7 @@ def wilson_selection(n_s_1, n_1, n_s_2, n_2) -> Tuple[float, float]:
     return sr, ci
 
 
-def main(resolution: str, year: str, smooth: bool, ci: Optional[Literal['none', 'wilson', 'bootstrap']], bootstraps: int, poverty: bool, urban: bool, all_incidents: bool):
+def main(resolution: str, year: str, smooth: bool, ci: Optional[Literal['none', 'wilson', 'bootstrap']], bootstraps: int, poverty: bool, urban: bool, all_incidents: bool, urban_filter: int):
     if "-" in year:
         years = year.split("-")
         years = range(int(years[0]), int(years[1]) + 1)
@@ -307,7 +331,7 @@ def main(resolution: str, year: str, smooth: bool, ci: Optional[Literal['none', 
         population_df = census_df.copy()
                 
         if smooth:
-            census_df = smooth_census(census_df, urban=urban, poverty=poverty)
+            census_df = smooth_census(census_df, urban=urban, poverty=poverty, urban_filter=urban_filter)
             nibrs_df = smooth_nibrs(nibrs_df)
             
         ##### END DATA LOADING ######
@@ -373,6 +397,9 @@ def main(resolution: str, year: str, smooth: bool, ci: Optional[Literal['none', 
     if all_incidents:
         filename += "_all_incidents"
         
+    if urban_filter != 2:
+        filename += f"_urban_filter_{urban_filter}"
+        
     filename += ".csv"
     selection_bias_df.to_csv(data_path / "output" / filename)
 
@@ -388,6 +415,7 @@ if __name__ == "__main__":
     parser.add_argument("--poverty", help="Whether to include poverty in the usage model.", default=False, action='store_true')
     parser.add_argument("--urban", help="Whether to include urban/rural definitions in the usage model.", default=False, action='store_true')
     parser.add_argument("--all_incidents", help="Whether to include all incident types that involve cannabis in some way.", default=False, action='store_true')
+    parser.add_argument("--urban_filter", type=int, help="The level of urban areas to filter out when smoothing; UA >= N are removed before smoothing. Default=2.", default=2)
 
 
     args = parser.parse_args()
@@ -402,4 +430,5 @@ if __name__ == "__main__":
          bootstraps = int(args.bootstraps),
          poverty = args.poverty, 
          urban = args.urban,
-         all_incidents = args.all_incidents)
+         all_incidents = args.all_incidents,
+         urban_filter=args.urban_filter)
