@@ -1,16 +1,22 @@
 set.seed(1321312)
 args <- commandArgs(trailingOnly = TRUE)
 
+renv::restore()
+
 # TODO: revise
 if(length(args)!=3){
   poverty <- 0
   urban <- 0
   hispanic_included <- 0
+  year_min <- 2012
+  year_max <- 2019
 } else{
   print(args)
   poverty <- ifelse(args[1]==1, 1, 0)
   urban <- ifelse(args[2]==1, 1, 0)
-  hispanic_included <- ifelse(args[3]==1, 1, 0) # TODO: add this
+  hispanic_included <- ifelse(args[3]==1, 1, 0)
+  year_min <- ifelse(!is.null(args[4]), args[4], 2012)
+  year_max <- ifelse(!is.null(args[5]), args[5], 2019)
 }
 
 library(dplyr)
@@ -21,7 +27,8 @@ library(glue)
 library(here)
 library(srvyr)
 library(cli)
-library(tidymodels)
+library(missRanger)
+library(ranger)
 
 
 cli_h1('Processing NSDUH files!')
@@ -29,11 +36,10 @@ cli_text('Parameters')
 cli_li(glue('poverty :{poverty}'))
 cli_li(glue('urban: {urban}'))
 cli_li(glue('hispanic included: {hispanic_included}'))
-cli_h1('')
 
 # download and store all files ----
 
-years <- 2012:2019
+years <- year_min:year_max
 get_nsduh_data <- function(year){
     download.file(url = glue('https://www.datafiles.samhsa.gov/sites/default/files/field-uploads-protected/studies/NSDUH-{year}/NSDUH-{year}-datasets/NSDUH-{year}-DS0001/NSDUH-{year}-DS0001-bundles-with-study-info/NSDUH-{year}-DS0001-bndl-data-tsv.zip'),
                   destfile = here('scripts', 'R', 'downloaded_data', 'nsduh.zip'))
@@ -229,9 +235,11 @@ stats_df <- df_srv %>%
      mean_usage_days = survey_mean(usage_days, na.rm = TRUE)
    )
 
+filename <- here('scripts', 'R', 'downloaded_data',
+                 glue('nsduh_usage_{min(years)}_{max(years)}{ifelse(hispanic_included == 1, "_hispincluded", "_nohisp")}{ifelse(poverty==1, "_poverty", "")}{ifelse(urban==1, "_urban", "")}'))
+
 stats_df %>%
-  write_csv(here('scripts', 'R', 'downloaded_data',
-                 glue('nsduh_usage_{min(years)}_{max(years)}{ifelse(hispanic_included == 1, "_hispincluded", "_nohisp")}{ifelse(poverty==1, "_poverty", "")}{ifelse(urban==1, "_urban", "")}')))
+  write_csv(filename)
 
 
 # old code ----
