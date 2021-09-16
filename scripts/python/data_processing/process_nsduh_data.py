@@ -29,6 +29,10 @@ def get_nsduh_data(years: Union[str, List[Union[str, int]]], poverty: bool = Fal
     else:
         years = [int(years)]   
     df = df[df.year.isin(years)]
+    if poverty:
+        df = df.rename({"poverty_level": "poverty"}, axis=1)
+    if urban:
+        df = df.rename({"is_urban": "urbancounty"}, axis=1)
     return df
 
     
