@@ -226,7 +226,7 @@ def add_poverty_info(df: pd.DataFrame):
     df["income higher than poverty level"] *= df.frequency
     df["living in poverty"] *= df.frequency
     df = df.drop(columns=["frequency"])
-    df = pd.melt(df, id_vars=["ori", "FIPS", "age", "race", "sex"], value_vars=["living in poverty", "income higher than poverty level"], var_name="poverty", value_name="frequency")
+    df = pd.melt(df, id_vars=["ori", "FIPS", "year", "state", "state_region", "age", "race", "sex"], value_vars=["living in poverty", "income higher than poverty level"], var_name="poverty", value_name="frequency")
     return df
 
 def add_urban_info(df: pd.DataFrame):    

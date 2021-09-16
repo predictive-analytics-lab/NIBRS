@@ -80,7 +80,7 @@ def selection_ratio(incident_user_df: pd.DataFrame, wilson: bool) -> pd.DataFram
     incident_user_df = incident_user_df.rename(columns={"black_x": "black_incidents", "black_y": "black_users","white_x": "white_incidents","white_y": "white_users"})
     return incident_user_df
 
-def add_extra_information(selection_bias_df: pd.DataFrame, nibrs_df: pd.DataFrame, census_df: pd.DataFrame, geographic_resolution: str) -> pd.DataFrame:
+def add_extra_information(selection_bias_df: pd.DataFrame, nibrs_df: pd.DataFrame, census_df: pd.DataFrame, geographic_resolution: str, year: int) -> pd.DataFrame:
         
     incidents = nibrs_df.groupby(resolution_dict[geographic_resolution]).incidents.sum().reset_index()
     
@@ -95,7 +95,9 @@ def add_extra_information(selection_bias_df: pd.DataFrame, nibrs_df: pd.DataFram
         urban_codes.rename(columns={"FIPS code":"FIPS", "2013 code": "urban_code"}, inplace=True)
         urban_codes["FIPS"] = urban_codes.FIPS.apply(lambda x: str(x).rjust(5, "0"))
         selection_bias_df = selection_bias_df.merge(urban_codes, how="left", on="FIPS")
-    
+        coverage = pd.read_csv(data_path / "misc" / "county_coverage.csv", usecols=["FIPS", "coverage", "year"], dtype={"FIPS": str, "year":int})
+        selection_bias_df = selection_bias_df.merge(coverage, how="left", on=["FIPS", "year"])
+
     selection_bias_df = selection_bias_df.merge(incidents, how="left", on=resolution_dict[geographic_resolution])
     selection_bias_df = selection_bias_df.merge(popdf, how="left", on=resolution_dict[geographic_resolution])
 
@@ -115,7 +117,7 @@ def add_race_ratio(census_df: pd.DataFrame, incident_df: pd.DataFrame, geographi
 
 def load_datasets(years: str, resolution: str, poverty: bool, urban: bool, all_incidents: bool) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     census_df = get_census_data(years = years, poverty = poverty, urban = urban)
-    nsduh_df = get_nsduh_data(years=years)
+    nsduh_df = get_nsduh_data(years=years, poverty=poverty, urban=urban)
     nibrs_df = load_and_process_nibrs(years=years, resolution=resolution, all_incidents=all_incidents)
     return census_df, nsduh_df, nibrs_df
 
@@ -180,7 +182,7 @@ def main(resolution: str, year: str, smooth: bool, ci: Optional[Literal['none', 
         population_df = census_df.copy()
                 
         if smooth:
-            nibrs_df, census_df = smooth_data(nibrs_df, census_df)
+            nibrs_df, census_df = smooth_data(nibrs_df, census_df, urban=urban, poverty=poverty, urban_filter=urban_filter)
             # census_df = smooth_census(census_df, urban=urban, poverty=poverty, urban_filter=urban_filter)
             # nibrs_df = smooth_nibrs(nibrs_df)
             
@@ -219,7 +221,7 @@ def main(resolution: str, year: str, smooth: bool, ci: Optional[Literal['none', 
             temp_df = incident_users_df.reset_index()[["FIPS", "selection_ratio", "lb", "ub", "black_incidents", "black_users", "white_incidents", "white_users"]]
         
         
-        temp_df = add_extra_information(temp_df, incident_df, population_df, resolution)
+        temp_df = add_extra_information(temp_df, incident_df, population_df, resolution, yi)
         temp_df = add_race_ratio(census_df, temp_df, resolution)
         #### END ###
         
@@ -227,9 +229,6 @@ def main(resolution: str, year: str, smooth: bool, ci: Optional[Literal['none', 
         selection_bias_df = selection_bias_df.append(temp_df.copy())
         
     filename = f"selection_ratio_{resolution}_{year}"
-    
-    if smooth:
-        filename += "_smoothed"
         
     if ci == "bootstrap":
         filename += f"_bootstraps_{bootstraps}"
@@ -247,6 +246,9 @@ def main(resolution: str, year: str, smooth: bool, ci: Optional[Literal['none', 
         
     if urban_filter != 2:
         filename += f"_urban_filter_{urban_filter}"
+    
+    if smooth:
+        filename += "_smoothed"
         
     filename += ".csv"
     selection_bias_df.to_csv(data_path / "output" / filename)

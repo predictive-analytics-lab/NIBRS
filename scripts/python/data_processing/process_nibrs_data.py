@@ -116,6 +116,7 @@ def load_and_process_nibrs(years: str, resolution: str, hispanic: bool = False, 
     nibrs_df = pd.merge(nibrs_df, fips_ori_df, on="ori")
     nibrs_df = pd.merge(nibrs_df, subregion_df, on="FIPS")
     nibrs_df["state_region"] = nibrs_df["State"] + "-" + nibrs_df["Region"]
+    
 
     # Clean up
     nibrs_df.rename(columns={"State":"state"}, inplace=True)
@@ -137,6 +138,8 @@ def load_and_process_nibrs(years: str, resolution: str, hispanic: bool = False, 
     nibrs_df = nibrs_df.merge(locations, on=resolution_dict[resolution], how="inner")
     nibrs_arrests = nibrs_arrests.merge(locations, on=resolution_dict[resolution], how="inner")
     
+    nibrs_df["year"] = "-".join([str(y) for y in years])
+    nibrs_arrests["year"] = "-".join([str(y) for y in years])
     if arrests:
         return nibrs_df, nibrs_arrests
     
