@@ -60,12 +60,22 @@ def incident_users(nibrs_df: pd.DataFrame, census_df: pd.DataFrame, nsduh_df: pd
     
     census_df["users"] = census_df["frequency"] * census_df["prob_usage_one_dat"]
     
-    users = census_df.groupby(["race", resolution_dict[resolution]]).frequency.sum().to_frame("user_count").reset_index()
-    users = users.pivot(index=resolution_dict[resolution], columns="race", values="user_count")
+    census_df["users_var"] = census_df["frequency"] * census_df["prob_usage_one_dat_se"] ** 2
 
+    users = census_df.groupby(["race", resolution_dict[resolution]]).users.sum().to_frame("user_count").reset_index()
+    
+    users_var = census_df.groupby(["race", resolution_dict[resolution]]).users_var.sum().to_frame("user_var").reset_index()
+        
+    users = users.pivot(index=resolution_dict[resolution], columns="race", values="user_count")
+    users_var = users_var.pivot(index=resolution_dict[resolution], columns="race", values="user_var")
+    
     incidents = nibrs_df.groupby(sorted(["race"] + [resolution_dict[resolution]], key=str.casefold)).incidents.sum().to_frame("incident_count").reset_index()
     incidents = incidents.pivot(index=resolution_dict[resolution], columns="race", values="incident_count")
-    return incidents.merge(users, on=resolution_dict[resolution]) 
+    incidents = incidents.merge(users, on=resolution_dict[resolution])
+    df =  incidents.merge(users_var, on=resolution_dict[resolution]) 
+    df = df.rename({"black": "black_users_variance", "white": "white_users_variance"}, axis=1)
+    return df
+
 
 
 def selection_ratio(incident_user_df: pd.DataFrame, wilson: bool) -> pd.DataFrame:
@@ -157,6 +167,40 @@ def wilson_selection(n_s_1, n_1, n_s_2, n_2) -> Tuple[float, float]:
     ci = np.sqrt((e1 / p1)**2 + (e2 / p2)**2) * sr
     return sr, ci
 
+def bootstrap_selection(incident_users_df: pd.DataFrame, bootstraps: int):
+    def _sample_incidents(prob, trials, bootstraps: int, seed: int) -> int:
+        np.random.seed(seed)
+        if not np.isnan(prob):
+            successes = np.random.binomial(n = trials, p = prob, size=bootstraps)
+        else:
+            successes = np.nan
+        return successes / trials
+    black_count = []
+    white_count = []
+    incident_users_df["black_prob"] = incident_users_df.black_x / (incident_users_df.black_y * 365.0)
+    incident_users_df["white_prob"] = incident_users_df.white_x / (incident_users_df.white_y * 365.0)
+    for i, row in incident_users_df.iterrows():
+        white_vector = _sample_incidents(row["white_prob"], row["white_y"] * 365.0, bootstraps, seed=1)
+        black_vector = _sample_incidents(row["black_prob"], row["black_y"]* 365.0, bootstraps, seed=1)
+        selection_ratios = black_vector / white_vector
+        selection_ratios = np.nan_to_num(selection_ratios, nan=np.inf, posinf=np.inf)
+        incident_users_df.loc[i, "selection_ratio"] = row["black_prob"] / row["white_prob"]
+        incident_users_df.loc[i, "lb"] = np.nan_to_num(np.quantile(selection_ratios, 0.025), nan=np.inf)
+        incident_users_df.loc[i, "ub"] = np.nan_to_num(np.quantile(selection_ratios, 0.975), nan=np.inf)
+        incident_users_df.loc[i, "black_incident_variance"] = np.nan_to_num(np.var(black_vector), nan=0)
+        incident_users_df.loc[i, "white_incident_variance"] = np.nan_to_num(np.var(white_vector), nan=0)
+    incident_users_df = incident_users_df.rename(columns={"black_x": "black_incidents", "black_y": "black_users","white_x": "white_incidents","white_y": "white_users"})
+    return incident_users_df.reset_index()[["FIPS", "selection_ratio", "lb", "ub", "black_incidents", "black_users_variance", "white_users_variance", "black_incident_variance", "white_incident_variance", "black_users", "white_incidents", "white_users"]]
+
+def delta_method(df: pd.DataFrame):
+    """['FIPS', 'selection_ratio', 'lb', 'ub', 'black_incidents',
+       'black_users_variance', 'white_users_variance',
+       'black_incident_variance', 'white_incident_variance', 'black_users',
+       'white_incidents', 'white_users']"""
+    var_log_sr = 1 / (df.black_incidents ** 2) * df.black_incident_variance + 1 / (df.white_incidents ** 2) * df.white_incident_variance + \
+    1 / (df.black_users ** 2) * df.black_users_variance +  1 / (df.white_users ** 2) * df.white_users_variance 
+    df['ub'] = df.selection_ratio * np.exp(1.96 * np.sqrt(var_log_sr))
+    df['lb'] = df.selection_ratio * np.exp(- 1.96 * np.sqrt(var_log_sr))
 
 def main(resolution: str, year: str, smooth: bool, ci: Optional[Literal['none', 'wilson', 'bootstrap']], bootstraps: int, poverty: bool, urban: bool, all_incidents: bool, urban_filter: int):
     if "-" in year:
@@ -180,7 +224,7 @@ def main(resolution: str, year: str, smooth: bool, ci: Optional[Literal['none', 
         # Copy to retain unsmoothed information
         incident_df = nibrs_df.copy()
         population_df = census_df.copy()
-                
+
         if smooth:
             nibrs_df, census_df = smooth_data(nibrs_df, census_df, urban=urban, poverty=poverty, urban_filter=urban_filter)
             # census_df = smooth_census(census_df, urban=urban, poverty=poverty, urban_filter=urban_filter)
@@ -191,35 +235,16 @@ def main(resolution: str, year: str, smooth: bool, ci: Optional[Literal['none', 
         #### START ####
         incident_users_df = incident_users(nibrs_df, census_df, nsduh_df, resolution, poverty, urban)
         incident_users_df = incident_users_df.fillna(0)
-        
-        def _sample_incidents(prob, trials, bootstraps: int, seed: int) -> int:
-            np.random.seed(seed)
-            if not np.isnan(prob):
-                successes = np.random.binomial(n = trials, p = prob, size=bootstraps)
-            else:
-                successes = np.nan
-            return successes / trials
-                    
+                            
         if ci == "none":
             temp_df = selection_ratio(incident_users_df, wilson=False)
         elif ci == "wilson":
             temp_df = selection_ratio(incident_users_df, wilson=True)
         else:
-            black_count = []
-            white_count = []
-            incident_users_df["black_prob"] = incident_users_df.black_x / (incident_users_df.black_y * 365.0)
-            incident_users_df["white_prob"] = incident_users_df.white_x / (incident_users_df.white_y * 365.0)
-            for i, row in incident_users_df.iterrows():
-                white_vector = _sample_incidents(row["white_prob"], row["white_y"] * 365.0, bootstraps, seed=1)
-                black_vector = _sample_incidents(row["black_prob"], row["black_y"]* 365.0, bootstraps, seed=1)
-                selection_ratios = black_vector / white_vector
-                selection_ratios = np.nan_to_num(selection_ratios, nan=np.inf, posinf=np.inf)
-                incident_users_df.loc[i, "selection_ratio"] = row["black_prob"] / row["white_prob"]
-                incident_users_df.loc[i, "lb"] = np.nan_to_num(np.quantile(selection_ratios, 0.025), nan=np.inf)
-                incident_users_df.loc[i, "ub"] = np.nan_to_num(np.quantile(selection_ratios, 0.975), nan=np.inf)
-            incident_user_df = incident_user_df.rename(columns={"black_x": "black_incidents", "black_y": "black_users","white_x": "white_incidents","white_y": "white_users"})
-            temp_df = incident_users_df.reset_index()[["FIPS", "selection_ratio", "lb", "ub", "black_incidents", "black_users", "white_incidents", "white_users"]]
-        
+            temp_df = bootstrap_selection(incident_users_df, bootstraps)
+            delta_method(temp_df)
+            
+            
         
         temp_df = add_extra_information(temp_df, incident_df, population_df, resolution, yi)
         temp_df = add_race_ratio(census_df, temp_df, resolution)
