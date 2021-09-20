@@ -245,7 +245,6 @@ def main(resolution: str, year: str, smooth: bool, ci: Optional[Literal['none', 
         incident_df = nibrs_df.copy()
         population_df = census_df.copy()
         
-        breakpoint()
 
         if smooth:
             nibrs_df, census_df = smooth_data(nibrs_df, census_df, urban=urban, poverty=poverty, urban_filter=urban_filter, smoothing_param=smoothing_param)

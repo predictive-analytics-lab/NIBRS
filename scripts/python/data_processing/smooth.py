@@ -49,9 +49,6 @@ def smooth_state(state_df: pd.DataFrame, county_gdf: gpd.GeoDataFrame, state: st
     # If only one county in the state, just return (why smooth one value).
     if len(state_df.FIPS.unique()) == 1:
         return state_df
-    
-    if state == "Missouri":
-        breakpoint()
         
     state_df, urban_df = filter_urban(state_df, urban_filter)
         
