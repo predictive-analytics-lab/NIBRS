@@ -272,6 +272,9 @@ def main(resolution: str, year: str, smooth: bool, ci: Optional[Literal['none', 
         selection_bias_df = selection_bias_df.append(temp_df.copy())
         
     filename = f"selection_ratio_{resolution}_{year}"
+    
+    if group_years:
+        filename += "_grouped"
         
     if ci == "bootstrap":
         filename += f"_bootstraps_{bootstraps}"
