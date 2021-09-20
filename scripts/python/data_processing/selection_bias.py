@@ -57,10 +57,16 @@ def incident_users(nibrs_df: pd.DataFrame, census_df: pd.DataFrame, nsduh_df: pd
     census_df = census_df.drop_duplicates()
     
     census_df = census_df.merge(nsduh_df, on=vars, how="left")
+        
+    #prob_dem = (census_df.groupby([*vars, resolution_dict[resolution]]).frequency.sum() / census_df.groupby(["race", resolution_dict[resolution]]).frequency.sum()).to_frame("prob_dem").reset_index()
     
-    census_df["users"] = census_df["frequency"] * census_df["prob_usage_one_dat"]
+    #census_df = census_df.merge(prob_dem, on=[resolution_dict[resolution], *vars])
     
-    census_df["users_var"] = census_df["frequency"] * census_df["prob_usage_one_dat_se"] ** 2
+    census_df["users"] = census_df["frequency"] * census_df["prob_usage_one_dat"] * 365.0
+    
+    #census_df["users_var"] = (census_df["prob_dem"] ** 2) * census_df["users"] * (census_df["prob_usage_one_dat_se"] ** 2) * 365.0
+
+    census_df["users_var"] = census_df["users"] * (census_df["prob_usage_one_dat_se"] ** 2) * 365.0
 
     users = census_df.groupby(["race", resolution_dict[resolution]]).users.sum().to_frame("user_count").reset_index()
     
@@ -100,12 +106,13 @@ def add_extra_information(selection_bias_df: pd.DataFrame, nibrs_df: pd.DataFram
         
     popdf = census_df.groupby([resolution_dict[geographic_resolution]]).frequency.sum().reset_index()
     
-    if geographic_resolution == "county":
+    if geographic_resolution == "county" and isinstance(year, int):
         urban_codes = pd.read_csv(data_path / "misc" / "NCHSURCodes2013.csv", usecols=["FIPS code", "2013 code"])
         urban_codes.rename(columns={"FIPS code":"FIPS", "2013 code": "urban_code"}, inplace=True)
         urban_codes["FIPS"] = urban_codes.FIPS.apply(lambda x: str(x).rjust(5, "0"))
         selection_bias_df = selection_bias_df.merge(urban_codes, how="left", on="FIPS")
         coverage = pd.read_csv(data_path / "misc" / "county_coverage.csv", usecols=["FIPS", "coverage", "year"], dtype={"FIPS": str, "year":int})
+        selection_bias_df["year"] = year
         selection_bias_df = selection_bias_df.merge(coverage, how="left", on=["FIPS", "year"])
 
     selection_bias_df = selection_bias_df.merge(incidents, how="left", on=resolution_dict[geographic_resolution])
@@ -114,6 +121,9 @@ def add_extra_information(selection_bias_df: pd.DataFrame, nibrs_df: pd.DataFram
     return selection_bias_df
 
 def add_race_ratio(census_df: pd.DataFrame, incident_df: pd.DataFrame, geographic_resolution: str):
+    if "ori" in census_df.columns:
+        census_df.drop(columns=["ori"], inplace=True)
+        census_df.drop_duplicates(inplace=True)
     race_ratio = census_df.groupby([resolution_dict[geographic_resolution], "race"]).frequency.sum().reset_index()
     race_ratio = race_ratio.pivot(resolution_dict[geographic_resolution], columns="race").reset_index()
     race_ratio.columns = [resolution_dict[geographic_resolution], "black", "white"]
@@ -149,10 +159,10 @@ def wilson_error(n_s: int, n: int, z = 1.96) -> Tuple[float, float]:
 
 def simple_selection_ratio(n_s_1, n_1, n_s_2, n_2) -> float:
     # Add 2 to avoid division by zero - bad solution, but temporary.
-    n_s_1 += 2
-    n_s_2 += 2
-    n_1 += 2
-    n_2 += 2
+    n_s_1 += 0.1
+    n_s_2 += 0.1
+    n_1 += 1
+    n_2 += 1
     p1 = n_s_1 / n_1
     p2 = n_s_2 / n_2
     return p1 / p2
@@ -169,20 +179,25 @@ def wilson_selection(n_s_1, n_1, n_s_2, n_2) -> Tuple[float, float]:
 
 def bootstrap_selection(incident_users_df: pd.DataFrame, bootstraps: int):
     def _sample_incidents(prob, trials, bootstraps: int, seed: int) -> int:
+        prob = np.min([prob, 1])
         np.random.seed(seed)
         if not np.isnan(prob):
             successes = np.random.binomial(n = trials, p = prob, size=bootstraps)
         else:
             successes = np.nan
-        return successes / trials
+        return successes
     black_count = []
     white_count = []
-    incident_users_df["black_prob"] = incident_users_df.black_x / (incident_users_df.black_y * 365.0)
-    incident_users_df["white_prob"] = incident_users_df.white_x / (incident_users_df.white_y * 365.0)
+    incident_users_df.black_x += 0.5
+    incident_users_df.white_x += 0.5
+    incident_users_df.black_y += 1
+    incident_users_df.white_y += 1
+    incident_users_df["black_prob"] = incident_users_df.black_x / (incident_users_df.black_y)
+    incident_users_df["white_prob"] = incident_users_df.white_x / (incident_users_df.white_y)
     for i, row in incident_users_df.iterrows():
-        white_vector = _sample_incidents(row["white_prob"], row["white_y"] * 365.0, bootstraps, seed=1)
-        black_vector = _sample_incidents(row["black_prob"], row["black_y"]* 365.0, bootstraps, seed=1)
-        selection_ratios = black_vector / white_vector
+        white_vector = _sample_incidents(row["white_prob"], row["white_y"], bootstraps, seed=1)
+        black_vector = _sample_incidents(row["black_prob"], row["black_y"], bootstraps, seed=1)
+        selection_ratios = (black_vector / row["black_y"]) / (white_vector / row["white_y"])
         selection_ratios = np.nan_to_num(selection_ratios, nan=np.inf, posinf=np.inf)
         incident_users_df.loc[i, "selection_ratio"] = row["black_prob"] / row["white_prob"]
         incident_users_df.loc[i, "lb"] = np.nan_to_num(np.quantile(selection_ratios, 0.025), nan=np.inf)
@@ -201,14 +216,19 @@ def delta_method(df: pd.DataFrame):
     1 / (df.black_users ** 2) * df.black_users_variance +  1 / (df.white_users ** 2) * df.white_users_variance 
     df['ub'] = df.selection_ratio * np.exp(1.96 * np.sqrt(var_log_sr))
     df['lb'] = df.selection_ratio * np.exp(- 1.96 * np.sqrt(var_log_sr))
+    return df
 
-def main(resolution: str, year: str, smooth: bool, ci: Optional[Literal['none', 'wilson', 'bootstrap']], bootstraps: int, poverty: bool, urban: bool, all_incidents: bool, urban_filter: int):
-    if "-" in year:
-        years = year.split("-")
-        years = range(int(years[0]), int(years[1]) + 1)
+def main(resolution: str, year: str, smooth: bool, ci: Optional[Literal['none', 'wilson', 'bootstrap']], bootstraps: int, poverty: bool, urban: bool, all_incidents: bool, urban_filter: int, smoothing_param: int, group_years: bool):
+    
+    if not group_years:
+        if "-" in year:
+            years = year.split("-")
+            years = range(int(years[0]), int(years[1]) + 1)
 
+        else:
+            years = [int(year)]
     else:
-        years = [int(year)]
+        years=[year]
 
     selection_bias_df = pd.DataFrame()
 
@@ -224,11 +244,11 @@ def main(resolution: str, year: str, smooth: bool, ci: Optional[Literal['none', 
         # Copy to retain unsmoothed information
         incident_df = nibrs_df.copy()
         population_df = census_df.copy()
+        
+        breakpoint()
 
         if smooth:
-            nibrs_df, census_df = smooth_data(nibrs_df, census_df, urban=urban, poverty=poverty, urban_filter=urban_filter)
-            # census_df = smooth_census(census_df, urban=urban, poverty=poverty, urban_filter=urban_filter)
-            # nibrs_df = smooth_nibrs(nibrs_df)
+            nibrs_df, census_df = smooth_data(nibrs_df, census_df, urban=urban, poverty=poverty, urban_filter=urban_filter, smoothing_param=smoothing_param)
             
         ##### END DATA LOADING ######
         
@@ -242,12 +262,10 @@ def main(resolution: str, year: str, smooth: bool, ci: Optional[Literal['none', 
             temp_df = selection_ratio(incident_users_df, wilson=True)
         else:
             temp_df = bootstrap_selection(incident_users_df, bootstraps)
-            delta_method(temp_df)
-            
-            
+            temp_df = delta_method(temp_df)
         
         temp_df = add_extra_information(temp_df, incident_df, population_df, resolution, yi)
-        temp_df = add_race_ratio(census_df, temp_df, resolution)
+        temp_df = add_race_ratio(population_df, temp_df, resolution)
         #### END ###
         
         temp_df["year"] = yi
@@ -274,6 +292,8 @@ def main(resolution: str, year: str, smooth: bool, ci: Optional[Literal['none', 
     
     if smooth:
         filename += "_smoothed"
+        if smoothing_param != 1:
+            filename += f"_{str(smoothing_param).replace('.', '-')}"
         
     filename += ".csv"
     selection_bias_df.to_csv(data_path / "output" / filename)
@@ -291,6 +311,8 @@ if __name__ == "__main__":
     parser.add_argument("--urban", help="Whether to include urban/rural definitions in the usage model.", default=False, action='store_true')
     parser.add_argument("--all_incidents", help="Whether to include all incident types that involve cannabis in some way.", default=False, action='store_true')
     parser.add_argument("--urban_filter", type=int, help="The level of urban areas to filter out when smoothing; UA >= N are removed before smoothing. Default=2.", default=2)
+    parser.add_argument("--smoothing_param", type=float, help="Smoothing is currently 1/(d+1)**p. Where d is (graph) distance. This parameter sets p. Default=1", default=1)
+    parser.add_argument("--group_years", help="Whether to group years into one poor for SR and CI calculation.", default=False, action='store_true')
 
 
     args = parser.parse_args()
@@ -306,4 +328,6 @@ if __name__ == "__main__":
          poverty = args.poverty, 
          urban = args.urban,
          all_incidents = args.all_incidents,
-         urban_filter=args.urban_filter)
+         urban_filter=args.urban_filter,
+         smoothing_param=args.smoothing_param,
+         group_years=args.group_years)

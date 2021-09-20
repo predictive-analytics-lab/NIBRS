@@ -14,7 +14,7 @@ def join_state_with_counties(df: pd.DataFrame, county_shp: gpd.GeoDataFrame, sta
     county_shp = county_shp.merge(df, on="FIPS", how="left")
     return county_shp.reset_index()
 
-def smooth_data(nibrs_df: pd.DataFrame, census_df: pd.DataFrame, urban: bool = False, poverty: bool = False, urban_filter: int = 2) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def smooth_data(nibrs_df: pd.DataFrame, census_df: pd.DataFrame, urban: bool = False, poverty: bool = False, urban_filter: int = 2, smoothing_param: int = 1) -> Tuple[pd.DataFrame, pd.DataFrame]:
     county_shp = gpd.read_file(data_path / "misc" / "us-county-boundaries.geojson")
     smoothed_nibrs = pd.DataFrame()
     smoothed_census = pd.DataFrame()
@@ -29,8 +29,8 @@ def smooth_data(nibrs_df: pd.DataFrame, census_df: pd.DataFrame, urban: bool = F
         state_cdf = census_df[census_df.state == state]
         state_gdf = county_shp[county_shp.state_name == state]
                 
-        state_sm_idf = smooth_state(state_idf, state_gdf, state, dem_vars, "incidents", urban_filter=urban_filter)
-        state_sm_cdf = smooth_state(state_cdf, state_gdf, state, dem_vars_c, "frequency", urban_filter=urban_filter)
+        state_sm_idf = smooth_state(state_idf, state_gdf, state, dem_vars, "incidents", urban_filter=urban_filter, smoothing_param=smoothing_param)
+        state_sm_cdf = smooth_state(state_cdf, state_gdf, state, dem_vars_c, "frequency", urban_filter=urban_filter, smoothing_param=smoothing_param)
         
         smoothed_nibrs = smoothed_nibrs.append(state_sm_idf)
         smoothed_census = smoothed_census.append(state_sm_cdf)
@@ -45,10 +45,13 @@ def reporting(state_df: pd.DataFrame, year: int) -> pd.DataFrame:
     reporting = agency_df.groupby("FIPS").nibrs_participated.apply(lambda x: "Y" if any(x == "Y") else "N").to_frame("reporting").reset_index()
     return state_df.merge(reporting, how="left", on="FIPS")
     
-def smooth_state(state_df: pd.DataFrame, county_gdf: gpd.GeoDataFrame, state: str,  dem_vars: List[str], value_var: str, urban_filter: int = 2) -> pd.DataFrame:
+def smooth_state(state_df: pd.DataFrame, county_gdf: gpd.GeoDataFrame, state: str,  dem_vars: List[str], value_var: str, urban_filter: int = 2, smoothing_param: int = 1) -> pd.DataFrame:
     # If only one county in the state, just return (why smooth one value).
     if len(state_df.FIPS.unique()) == 1:
         return state_df
+    
+    if state == "Missouri":
+        breakpoint()
         
     state_df, urban_df = filter_urban(state_df, urban_filter)
         
@@ -69,7 +72,7 @@ def smooth_state(state_df: pd.DataFrame, county_gdf: gpd.GeoDataFrame, state: st
     # Calculate adjacencies
     qW = Queen.from_dataframe(state_gdf_p)
     amat, _ = qW.full()
-    county_weights = get_county_weights(amat)
+    county_weights = get_county_weights(amat, distance_weighting = lambda x, y:0 if x==0 else 1 / (y + 1) ** smoothing_param)
     
     # Get the indices of the counties that are reporting (minus those that are urban)
     state_gdf_p = reporting(state_gdf_p, year)
@@ -119,7 +122,7 @@ def get_county_weights(state_amat: np.ndarray, max_path_length: int = 5, distanc
     np.fill_diagonal(new_weighted_amat, 1)
     return new_weighted_amat
 
-def filter_urban(df: pd.DataFrame, urban_level: int, coverage_required: float = 0.5, min_incidents: int = 10) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def filter_urban(df: pd.DataFrame, urban_level: int, coverage_required: float = 0.0, min_incidents: int = 0) -> Tuple[pd.DataFrame, pd.DataFrame]:
     year = df.year.unique()[0]
     urban_codes = pd.read_csv(data_path / "misc" / "NCHSURCodes2013.csv", usecols=["FIPS code", "2013 code"])
     urban_codes.rename(columns={"FIPS code":"FIPS", "2013 code": "urban_code"}, inplace=True)

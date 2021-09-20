@@ -25,7 +25,7 @@ def get_nsduh_data(years: Union[str, List[Union[str, int]]], poverty: bool = Fal
     df = get_file(poverty, urban, hispanic)
     if "-" in years:
         years = years.split("-")
-        years = [int(y) for y in range(years[0], years[-1])]
+        years = [int(y) for y in range(int(years[0]), int(years[-1]) + 1)]
     else:
         years = [int(years)]   
     df = df[df.year.isin(years)]
