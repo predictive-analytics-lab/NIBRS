@@ -89,6 +89,10 @@ def AGE(x: pd.Series):
         return "85+"
     return "total"
 
+rural_urban = {"Nonmetro": "rural",
+               "Large metro": "urban",
+               "Small metro": "urban"}
+
 def reporting_coverage(df: pd.DataFrame, resolution: str) -> pd.DataFrame:
     agency_df = pd.read_csv(data_path / "misc" / "agency_participation.csv", usecols=["ori", "nibrs_participated", "population", "data_year"])
     agency_df = agency_df[agency_df.data_year == 2019]
@@ -220,13 +224,16 @@ def load_and_process_census_data(years: Union[str, List[str]]) -> pd.DataFrame:
 
 def add_poverty_info(df: pd.DataFrame):
     poverty_df = pd.read_csv(data_path / "misc" / "poverty_data.csv", index_col=False, dtype={"FIPS":str})
-    poverty_df = poverty_df.rename(columns={"poverty_income higher than poverty level":"income higher than poverty level",
+    poverty_df = poverty_df.fillna(0)
+    poverty_df["FIPS"] = poverty_df.FIPS.apply(lambda x: str(x).rjust(5, "0"))
+    poverty_df = poverty_df.rename(columns={"poverty_income higher than poverty level":"income higher than poverty threshold",
                                "poverty_living in poverty":"living in poverty"})
     df = df.merge(poverty_df, how="left", on=["FIPS", "age", "race", "sex"])
-    df["income higher than poverty level"] *= df.frequency
+    df["income higher than poverty threshold"] *= df.frequency
     df["living in poverty"] *= df.frequency
     df = df.drop(columns=["frequency"])
-    df = pd.melt(df, id_vars=["ori", "FIPS", "year", "state", "state_region", "age", "race", "sex"], value_vars=["living in poverty", "income higher than poverty level"], var_name="poverty", value_name="frequency")
+    df = pd.melt(df, id_vars=["ori", "FIPS", "year", "state", "state_region", "age", "race", "sex"], value_vars=["living in poverty", "income higher than poverty threshold"], var_name="poverty", value_name="frequency")
+    df = df.fillna(0)
     return df
 
 def add_urban_info(df: pd.DataFrame):    
@@ -237,10 +244,12 @@ def add_urban_info(df: pd.DataFrame):
         if len(df_year) == 0:
             return pd.DataFrame()
         urban_df = pd.read_csv(data_path / "misc" / f"urban_codes_x_county_{filename_year}.csv", index_col=False, dtype={"FIPS":str}, usecols=["FIPS", "urbancounty"])
+        urban_df["FIPS"] = urban_df.FIPS.apply(lambda x: str(x).rjust(5, "0"))
+        urban_df["urbancounty"] = urban_df.urbancounty.map(rural_urban)
         return df_year.merge(urban_df, how="left", on="FIPS")
     
-    df_pre_2015 = _add_urban(df, "2003")
-    df_post_2015 = _add_urban(df, "2013")
+    df_pre_2015 = _add_urban(df_pre_2015, "2003")
+    df_post_2015 = _add_urban(df_post_2015, "2013")
     return df_pre_2015.append(df_post_2015)
 
 

@@ -43,7 +43,7 @@ resolution_dict = {"state": "state",
 def weighted_average_aggregate(group: pd.DataFrame):
     return (group["MJDAY30A"] * group["ANALWT_C"]).sum() / 30
 
-def incident_users(nibrs_df: pd.DataFrame, census_df: pd.DataFrame, nsduh_df: pd.DataFrame, resolution: str, poverty: bool, urban: bool, usage_name: str = "MJDAY30A") -> pd.DataFrame:
+def incident_users(nibrs_df: pd.DataFrame, census_df: pd.DataFrame, nsduh_df: pd.DataFrame, resolution: str, poverty: bool, urban: bool, usage_name: str = "MJDAY30A", years: bool = False) -> pd.DataFrame:
     vars = ["race", "age", "sex"]
     if poverty:
         vars += ["poverty"]
@@ -51,13 +51,17 @@ def incident_users(nibrs_df: pd.DataFrame, census_df: pd.DataFrame, nsduh_df: pd
         vars += ["urbancounty"]
     if poverty and urban:
         raise ValueError("Only EITHER poverty OR urban may be used.")
+    if years:
+        vars += ["year"]
+    #30053
     
     census_df = census_df[census_df[resolution_dict[resolution]].isin(nibrs_df[resolution_dict[resolution]])]
     census_df = census_df[vars + ["frequency", resolution_dict[resolution]]]
     census_df = census_df.drop_duplicates()
     
+    
     census_df = census_df.merge(nsduh_df, on=vars, how="left")
-        
+            
     #prob_dem = (census_df.groupby([*vars, resolution_dict[resolution]]).frequency.sum() / census_df.groupby(["race", resolution_dict[resolution]]).frequency.sum()).to_frame("prob_dem").reset_index()
     
     #census_df = census_df.merge(prob_dem, on=[resolution_dict[resolution], *vars])
@@ -252,9 +256,9 @@ def main(resolution: str, year: str, smooth: bool, ci: Optional[Literal['none', 
         ##### END DATA LOADING ######
         
         #### START ####
-        incident_users_df = incident_users(nibrs_df, census_df, nsduh_df, resolution, poverty, urban)
+        incident_users_df = incident_users(nibrs_df, census_df, nsduh_df, resolution, poverty, urban, years=group_years)
         incident_users_df = incident_users_df.fillna(0)
-                            
+                                    
         if ci == "none":
             temp_df = selection_ratio(incident_users_df, wilson=False)
         elif ci == "wilson":
