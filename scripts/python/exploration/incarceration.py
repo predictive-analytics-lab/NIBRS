@@ -40,17 +40,44 @@ sb_df = sb_df[sb_df["selection_ratio"] / sb_df["ci"] >= 2]
 sb_df["selection_ratio_log10"] = np.log10(sb_df["selection_ratio"])
 
 # %%
-ax = sns.regplot(x="ir_county_ratio", y="selection_ratio_log10", fit_reg=True, data=sb_df)
-plt.ylim([0, 10])
+# ax = sns.regplot(x="income_county_ratio", y="selection_ratio_log10", fit_reg=True, data=sb_df)
+res = stats.linregress(x=sb_df.ir_county_ratio, y=sb_df.selection_ratio_log10)
+
+g = sns.jointplot(data=sb_df, x="ir_county_ratio", y="selection_ratio_log10", kind="reg")
+plt.text(x=0.5, y=2.2, s=f"slope: {res.slope:.3f}\n ci: {res.pvalue:.3f}")
+
+g.ax_joint.set_ylabel("log10(selection_ratio)")
+g.ax_joint.set_xlabel("incarceration rate county / mean(incarceration rate county)")
+
+plt.ylim([0, 2])
 plt.show()
 
 # %%
-ax = sns.regplot(x="ir_bw_ratio", y="selection_ratio_log10", fit_reg=True, data=sb_df)
-plt.ylim([0, 10])
-plt.xlim([0, 10])
+
+sb_df_temp = sb_df[~sb_df.ir_bw_ratio.isnull()]
+
+res = stats.linregress(x=sb_df_temp.ir_bw_ratio, y=sb_df_temp.selection_ratio_log10)
+g = sns.jointplot(data=sb_df_temp, x="ir_bw_ratio", y="selection_ratio_log10", kind="reg")
+
+plt.text(x=0.5, y=2.2, s=f"slope: {res.slope:.3f}\n p-value: {res.pvalue:.3f}")
+
+plt.ylim([0, 2])
+g.ax_joint.set_ylabel("log10(selection_ratio)")
+g.ax_joint.set_xlabel("incarceration rate black / incarceration rate white")
+
 plt.show()
 # %%
-ax = sns.regplot(x="ir_b_county_ratio", y="selection_ratio_log10",fit_reg=True, data=sb_df)
 
+sb_df_temp = sb_df[~sb_df.ir_b_county_ratio.isnull()]
+
+res = stats.linregress(x=sb_df_temp.ir_b_county_ratio, y=sb_df_temp.selection_ratio_log10)
+
+g = sns.jointplot(data=sb_df_temp, x="ir_b_county_ratio", y="selection_ratio_log10", kind="reg")
+plt.text(x=0.5, y=2.2, s=f"slope: {res.slope:.3f}\n p-value: {res.pvalue:.3f}")
+
+g.ax_joint.set_ylabel("log10(selection_ratio)")
+g.ax_joint.set_xlabel("incarceration rate black / mean(incarceration rate black)")
+
+plt.ylim([0, 2])
 plt.show()
 # %%
