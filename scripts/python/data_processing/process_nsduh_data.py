@@ -12,7 +12,7 @@ data_path = Path(__file__).parents[3] / "data" / "NSDUH"
 # Rscript scripts/R/usage_model_on_nsduh.R 1 1 1
 
 def get_file(poverty: bool, urban: bool, hispanic: bool = False) -> pd.DataFrame:
-    filename = "nsduh_usage_2010_2019_nohisp"
+    filename = "nsduh_usage_2007_2019_nohisp"
     if poverty:
         filename += "_poverty"
     if urban:
