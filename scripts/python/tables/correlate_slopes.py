@@ -47,7 +47,7 @@ def parse_dfs(directory: Path, logx: List[str] = []) -> List[pd.DataFrame]:
 
 
 # %%
-df = parse_dfs(data_path)
+df = parse_dfs(data_path, logx=["density_county_ratio"])
 
 poverty_using = pd.read_csv(
     data_path.parent
@@ -170,36 +170,95 @@ for name in names:
     for col in correlates:
         tfi = df.copy()
         tfi = tfi[~tfi[col].isnull()]
-        y, X = dmatrices(f"var_log_{name} ~ {col}", data=tfi, return_type="dataframe")
+        y, X = dmatrices(
+            f"selection_ratio_log10_{name} ~ {col}", data=tfi, return_type="dataframe"
+        )
         model = sm.WLS(
             y,
             X,
             weights=1 / tfi[f"var_log_{name}"],
         )
         model_res = model.fit()
-        coef = model_res.params[0]
-        pvalue = model_res.pvalues[0]
-        # g = sns.jointplot(
-        #     data=tfi,
-        #     x=col,
-        #     y=f"selection_ratio_log10_{name}",
-        #     kind="reg",
-        # )
-        # plt.text(x=0.5, y=2.2, s=f"slope: {coef:.3f}\n ci: {pvalue:.3f}")
-        # g.ax_joint.set_ylabel("log10(selection_ratio)")
-        # g.ax_joint.set_xlabel(col)
-        # plt.title(f"{name} {col}")
-        # plt.show()
-        result = f"{coef:.3f} ({pvalue:.6f})"
+        model_res = model_res.get_robustcov_results(cov_type="HC1")
+        coef = model_res.params[1]
+        pvalue = model_res.pvalues[1]
+        std_error = model_res.HC1_se[1]
+        g = sns.jointplot(
+            data=tfi,
+            x=col,
+            y=f"selection_ratio_log10_{name}",
+            kind="reg",
+        )
+        plt.text(x=0.5, y=2.2, s=f"slope: {coef:.3f}\n ci: {pvalue:.3f}")
+        g.ax_joint.set_ylabel("log10(selection_ratio)")
+        g.ax_joint.set_xlabel(col)
+        plt.title(f"{name} {col}")
+        plt.show()
+        result = f"{coef:.3f} ({std_error:.6f})"
+        if pvalue <= 0.05:
+            result += "*"
+        if pvalue <= 0.01:
+            result += "*"
+        if pvalue <= 0.001:
+            result += "*"
         results += [[name, col, result]]
 
 result_df = pd.DataFrame(results, columns=["model", "correlate", "coef (p-value)"])
 # %%
 
+correlate_order = [
+    "income_county_ratio",
+    "income_bw_ratio",
+    "incarceration_county_ratio",
+    "incarceration_bw_ratio",
+    "perc_republican_votes",
+    "density_county_ratio",
+    "hsgrad_county_ratio",
+    "hsgrad_bw_ratio",
+    "collegegrad_county_ratio",
+    "collegegrad_bw_ratio",
+    "employment_county_ratio",
+    "employment_bw_ratio",
+    "birthrate_county_ratio",
+    "birthrate_bw_ratio",
+    "census_county_ratio",
+]
+
+correlate_names = [
+    "Income",
+    "Income bw ratio",
+    "Incarceration",
+    "Incarceration bw ratio",
+    "% Republican Vote Share",
+    "Population density",
+    "High school graduation rate",
+    "High school graduation rate bw ratio",
+    "College graduation rate",
+    "College graduation rate bw ratio",
+    "Employment rate at 35",
+    "Employment rate at 35 bw ratio",
+    "Teenage birth rate",
+    "Teenage birth rate bw ratio",
+    "Census Response rate",
+]
+
+model_names = ["Dem only", "Dem + Pov", "Dem + Urban", "Buying", "Buying Outside"]
+
+
+name_conv = {k: v for k, v in zip(correlate_order, correlate_names)}
+model_conv = {k: v for k, v in zip(names, model_names)}
+
+
 pivot_df = result_df.pivot(index="correlate", columns="model", values="coef (p-value)")
 pivot_df = pivot_df.reindex(names, axis=1)
+pivot_df = pivot_df.loc[correlate_order]
+
+pivot_df = pivot_df.rename(name_conv, axis=0)
+pivot_df = pivot_df.rename(model_conv, axis=1)
+
 # %%
 
+pivot_df.to_csv(data_path / "correlate_pivot.csv")
 df.to_csv(data_path / "processed_correlates.csv")
 
 # %%

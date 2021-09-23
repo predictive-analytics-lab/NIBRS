@@ -28,7 +28,7 @@ def get_file(poverty: bool, urban: bool, hispanic: bool = False) -> pd.DataFrame
 
 
 target_variables = {
-    "using": ["mean_bought_day", "mean_bought_day_se"],
+    "using": ["mean_usage_day", "mean_usage_day_se"],
     "buying": ["mean_bought_day", "mean_bought_day_se"],
     "buying_outside": ["mean_bought_outside_day", "mean_bought_outside_day_se"],
     "traded": ["mean_traded_day", "mean_traded_day_se"],

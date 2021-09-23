@@ -60,7 +60,7 @@ plt.text(x=0.5, y=2.2, s=f"slope: {res.slope:.3f}\n ci: {res.pvalue:.3f}")
 g.ax_joint.set_ylabel("log10(selection_ratio)")
 g.ax_joint.set_xlabel("county income / mean(county income)")
 
-plt.ylim([0, 2])
+plt.ylim([-1, 2])
 plt.show()
 
 # %%
@@ -74,7 +74,7 @@ g = sns.jointplot(
 
 plt.text(x=0.5, y=2.2, s=f"slope: {res.slope:.3f}\n p-value: {res.pvalue:.3f}")
 
-plt.ylim([0, 2])
+plt.ylim([-1, 2])
 g.ax_joint.set_ylabel("log10(selection_ratio)")
 plt.show()
 # %%

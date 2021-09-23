@@ -68,7 +68,6 @@ def incident_users(
     if years:
         vars += ["year"]
     # 30053
-
     census_df = census_df[
         census_df[resolution_dict[resolution]].isin(
             nibrs_df[resolution_dict[resolution]]
@@ -88,6 +87,8 @@ def incident_users(
     # census_df["users_var"] = (census_df["prob_dem"] ** 2) * census_df["users"] * (census_df["prob_usage_one_dat_se"] ** 2) * 365.0
 
     census_df["users_var"] = census_df["users"] * (census_df["MJ_SE"] ** 2) * 365.0
+
+    breakpoint()
 
     users = (
         census_df.groupby(["race", resolution_dict[resolution]])
