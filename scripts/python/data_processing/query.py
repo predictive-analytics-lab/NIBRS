@@ -17,7 +17,7 @@ def search_filename(name: str, dir: Path) -> Path:
             if f"nibrs_{name}.csv" in filename.name.lower():
                 return filename
 
-def query_one_state_year(year_dir: Path) -> pd.DataFrame:
+def query_one_state_year(year_dir: Path, summary: bool=False) -> pd.DataFrame:
     """Combine a single year-state combination into the desired df form."""
     if (subdir := year_dir / next(year_dir.iterdir())).is_dir():
         # Sometimes we end up with /year-state/subdir_with_random_name/
@@ -25,7 +25,7 @@ def query_one_state_year(year_dir: Path) -> pd.DataFrame:
 
     def read_csv(name: str, usecols: Optional[List[str]] = None) -> pd.DataFrame:
         filepath = search_filename(name, year_dir)
-        df = pd.read_csv(filepath)
+        df = pd.read_csv(filepath, low_memory=False)
         df.columns = df.columns.str.lower()
         if usecols is not None:
             df = df[usecols]
@@ -33,7 +33,7 @@ def query_one_state_year(year_dir: Path) -> pd.DataFrame:
 
 
     offender_df = read_csv("offender", usecols=['offender_id', 'incident_id', 'offender_seq_num', 'age_num', 'sex_code', 'race_id', 'ethnicity_id'])
-    incident_df = read_csv("incident", usecols=['agency_id', 'incident_id', 'nibrs_month_id', 'cleared_except_id'])
+    incident_df = read_csv("incident", usecols=['agency_id', 'incident_id', 'nibrs_month_id', 'cleared_except_id', 'incident_date', 'incident_hour'])
     main_df = offender_df.merge(incident_df, on="incident_id", how="left")
     arrestee_df = read_csv("arrestee", usecols=["incident_id", "arrestee_seq_num", "arrest_type_id"])
     arrestee_df = arrestee_df.rename(columns={'arrestee_seq_num': "offender_seq_num"})
@@ -63,25 +63,38 @@ def query_one_state_year(year_dir: Path) -> pd.DataFrame:
 
 
     criminal_act_df = read_csv("criminal_act", usecols=["offense_id", "criminal_act_id"])
-    criminal_act_df["criminal_act"] = criminal_act_df["criminal_act_id"].map({
+    ca_map = {
         8: 1,
         6: 2,
         1: 3
-    }, na_action="ignore")
+    }
+    if summary:
+        ca_map.update({
+            7: 4,
+            2: 5,
+            5: 5,
+            3: 6
+        })
+    criminal_act_df["criminal_act"] = criminal_act_df["criminal_act_id"].map(ca_map, na_action="ignore")
     criminal_act_df["criminal_act"] = criminal_act_df["criminal_act"].fillna(0)
     offense_df = read_csv("offense", usecols=["offense_id", "incident_id", "offense_type_id", "location_id"])
 
-    offense_df["location"] = offense_df["location_id"].map({
-        13: "street",
-        18: "street",
-        8: "store",
-        7: "store",
-        23: "store",
-        12: "store",
-        20: "home",
-        14: "hotel/motel",
-        41: "elementary school"
-    })
+    if not summary:
+        offense_df["location"] = offense_df["location_id"].map({
+            13: "street",
+            18: "street",
+            8: "store",
+            7: "store",
+            23: "store",
+            12: "store",
+            20: "home",
+            14: "hotel/motel",
+            41: "elementary school"
+        })
+        offense_df["location"] = offense_df["location"].fillna("other/none")
+    else:
+        offense_df = offense_df.merge(read_csv("location_type"), on="location_id", how="left")
+        offense_df = offense_df.rename(columns={"location_name": "location"})
     
     offense_df = offense_df.drop(columns=["location_id"])
 
@@ -100,12 +113,15 @@ def query_one_state_year(year_dir: Path) -> pd.DataFrame:
         'drug_offense': "any",
         'drug_equipment_offense': "any",
         'other_offense': "any",
-        "location": tuple
+        "location": lambda x: tuple(sorted(set(x))) if summary else tuple
     })
     criminal_act_df['criminal_act'] = criminal_act_df['criminal_act'].map({
         1: "consuming",
         2: "possessing",
-        3: "buying"
+        3: "buying",
+        4: "transporting",
+        5: "producing",
+        6: "distributing"
     })
     main_df = main_df.merge(criminal_act_df, on="incident_id", how="left")
 
@@ -146,16 +162,20 @@ def query_one_state_year(year_dir: Path) -> pd.DataFrame:
     return main_df
 
 
-def query_all(downloads_dir: Path) -> pd.DataFrame:
+def query_all(downloads_dir: Path, summary: bool=False) -> pd.DataFrame:
     combined_df = pd.DataFrame()
-    for sy_dir in tqdm(list(data_dir.iterdir())):
-        df = query_one_state_year(sy_dir)
+    for sy_dir in tqdm(list(downloads_dir.iterdir())):
+        df = query_one_state_year(sy_dir, summary=summary)
         combined_df = combined_df.append(df)
     return combined_df
 
 
 if __name__ == "__main__":
     #df = query_one_state_year(data_dir / "NE-2019") # next(data_dir.iterdir()))
-    df = query_all(data_dir)
-    df.to_csv(output_dir / "raw" / "cannabis_allyears_allincidents.csv")
+    from argparse import ArgumentParser
+    parser = ArgumentParser()
+    parser.add_argument("--summary", action="store_true")
+    args = parser.parse_args()
+    df = query_all(data_dir, summary=args.summary)
+    df.to_csv(output_dir / "raw" / f"cannabis_allyears_allincidents{'_summary' if args.summary else ''}.csv")
 
