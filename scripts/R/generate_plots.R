@@ -13,10 +13,40 @@ library(maps)
 library(ggridges)
 library(cowplot)
 
-sr <- vroom(here('scripts', 'R', "selection_ratio_county_2017-2019_grouped_wilson_poverty.csv"))
+sr <- vroom(here('data', 'output', "selection_ratio_county_2017-2019_grouped_bootstraps_1000_poverty.csv"))
+#sr_wilson <- vroom(here('data', 'output', "selection_ratio_county_2017-2019_grouped_wilson_poverty.csv"))
 sc <- fips_codes %>%
     mutate(FIPS = glue('{state_code}{county_code}'))
 
+# sr %>% select(black_users, white_users, FIPS, selection_ratio,
+#               black_incidents,
+#               white_incidents) %>%
+#   inner_join(
+#     sr2 %>% select(black_users, white_users, FIPS, selection_ratio,
+#                    black_incidents, white_incidents) %>%
+#       rename(black_users_wilson = black_users,
+#              white_users_wilson = white_users,
+#              black_incidents_wilson = black_incidents,
+#              white_incidents_wilson = white_incidents,
+#              sr_wilson = selection_ratio),
+#     by = 'FIPS'
+#   ) %>%
+#   select(FIPS, black_users_wilson, black_users)
+#   #ggplot(aes(selection_ratio, selection_ratio2)) + 
+#   #geom_point()
+#   ggplot(aes(black_users2 , black_users)) + 
+#   geom_point()
+#   ggplot(aes(white_incidents, white_incidents2)) + geom_point()
+#   #ggplot(aes(selection_ratio, sr2)) + geom_point() + xlim(0,10) + ylim(0,10)
+#   #ggplot(aes(white_users, white_users2)) + geom_point()
+# 
+# sr2 %>%
+# mutate(my_selection_ratio = (black_incidents + 0.1) * (white_users ) /
+#               ((white_incidents + 0) * (black_users ))) %>%
+# ggplot(aes(selection_ratio, my_selection_ratio)) + geom_point() +
+# xlim(0,10) + ylim(0,10)
+
+  
 # figure 1 ----
 
 # bins: based on actual value / based on lower bound
@@ -41,9 +71,7 @@ sc <- fips_codes %>%
 #            diff = black_incidents / black_users - white_incidents / white_users)
 
 sr_x_county <- sr %>%
-  rename(sr = selection_ratio) %>%
-  mutate(sr = sr - ci)
-
+  rename(sr = selection_ratio)
 
 data('county.fips')
 us_county <- map_data("county") %>%
@@ -56,13 +84,14 @@ sr_x_county <- us_county %>%
     mutate(sr = ifelse(is.infinite(sr), NA, sr))
 
 
-fct_order <- c('S<0.8', '0.8\u2264 S < 1.25',
+fct_order <- c('S<0.8', 
+               '0.8\u2264 S < 1.25',
                '1.25\u2264 S < 2',
                '2\u2264 S < 5',
                'S \u2265 5')
-cols <- c( 'S \u2265 5' = "red", '2\u2264 S < 5' = "purple",
-           '1.25\u2264 S < 2' = "yellow",'0.8\u2264 S < 1.25'= "blue",
-           'S<0.8' = "green")
+# cols <- c('S \u2265 5' = "#D55E00", '2\u2264 S < 5' = "#CC79A7",
+#            '1.25\u2264 S < 2' = "#F0E442",'0.8\u2264 S < 1.25'="#56B4E9",
+#            'S<0.8' = "#009E73")
 assign_quartile <- function(x, quartiles){
   x <- case_when(
     x > quartiles[3] ~ 4,
@@ -72,50 +101,163 @@ assign_quartile <- function(x, quartiles){
   )
   x / 4
 }
-quartiles <- sr %>% summarise(quant = quantile(selection_ratio/ci, 
-                                       probs = c(0.25, 0.5, 0.75))) %>%
-  pull(quant)
+# quartiles <- sr %>% 
+#   mutate(sr = selection_ratio - ci) %>%
+#   summarise(quant = quantile(sr/ci, 
+#                                        probs = c(0.25, 0.5, 0.75))) %>%
+#   pull(quant)
+# 
+# sr_x_county %>%
+#   mutate(sr = sr - ci) %>%
+#   mutate(quartile = assign_quartile(sr/ci, quartiles)) %>%
+#   mutate(sr_binned = case_when(
+#         sr < 0.8 ~ 'S<0.8',
+#         sr >= 0.8 & sr < 1.25 ~ '0.8\u2264 S < 1.25',
+#         sr >= 1.25 & sr < 2 ~ '1.25\u2264 S < 2',
+#         sr >= 2 & sr < 5 ~'2\u2264 S < 5',
+#         sr > 5 ~ 'S \u2265 5'
+#     )) %>%
+#     ggplot(data = .,
+#        mapping = aes(x = long, y = lat,
+#                      group = group,
+#                      fill = factor(sr_binned, levels = fct_order),
+#                      alpha = quartile)) +
+#     geom_polygon(color = "white", size = 0.2) +
+#     # add state lines?
+#     scale_fill_manual('Lower bound for \nselection ratio S', values = cols, na.value = 'gray90') +
+#     theme_classic() +
+#     theme(
+#         axis.title = element_blank(),
+#         axis.text.x = element_blank(),
+#         axis.text.y = element_blank(),
+#         axis.ticks = element_blank()) +
+#     scale_alpha(guide = 'none')
+# dir.create(here('scripts', 'R', 'plots'))
+# ggsave(here('scripts', 'R', 'plots', 'lb_selection_ratio_by_county.pdf'))
+
 
 sr_x_county %>%
-  mutate(quartile = assign_quartile(sr/ci, quartiles)) %>%
+  filter(!is.na(sr)) %>%
+  mutate(quartile_alpha = assign_quartile(
+    # log(sr)/var_log,
+    #sr / ci,
+    sr / 10^var_log,
+    quartiles)
+  ) %>%
   mutate(sr_binned = case_when(
-        sr < 0.8 ~ 'S<0.8',
-        sr >= 0.8 & sr < 1.25 ~ '0.8\u2264 S < 1.25',
-        sr >= 1.25 & sr < 2 ~ '1.25\u2264 S < 2',
-        sr >= 2 & sr < 5 ~'2\u2264 S < 5',
-        sr > 5 ~ 'S \u2265 5'
-    )) %>%
-    ggplot(data = .,
-       mapping = aes(x = long, y = lat,
-                     group = group,
-                     fill = factor(sr_binned, levels = fct_order),
-                     alpha = quartile)) +
-    geom_polygon(color = "white", size = 0.2) +
-    # add state lines?
-    scale_fill_manual('Lower bound for \nselection ratio S', values = cols, na.value = 'gray90') +
-    theme_classic() +
-    theme(
-        axis.title = element_blank(),
-        axis.text.x = element_blank(),
-        axis.text.y = element_blank(),
-        axis.ticks = element_blank()) +
-    scale_alpha(guide = 'none')
-ggsave(here('scripts', 'R', 'plots', 'selection_ratio_by_county.pdf'))
+    sr < 0.8 ~ 'S<0.8',
+    sr >= 0.8 & sr < 1.25 ~ '0.8\u2264 S < 1.25',
+    sr >= 1.25 & sr < 2 ~ '1.25\u2264 S < 2',
+    sr >= 2 & sr < 5 ~'2\u2264 S < 5',
+    sr > 5 ~ 'S \u2265 5'
+  )) %>%
+  mutate(
+    color_code = map_to_colors(quartile_alpha, sr_binned) #%>%
+    #tibble(code = .)
+  ) %>% count(quartile_alpha, sr_binned, color_code) %>% inner_join(all_cols, by = c('color_code' = 'code')) %>% arrange(sr_binned, quartile_alpha)
+
+cols <- c("#D55E00", "#CC79A7", "#F0E442","#56B4E9", "#009E73")
+opacity <- c('', 'E6', '80', '4D')
+all_cols <- cols %>% purrr::map(~ rev(paste0(.x, opacity))) %>%
+  unlist()
+all_cols <- tibble(cols = all_cols, code = letters[1:20])
+all_cols_for_plot <- all_cols$cols
+names(all_cols_for_plot) <- all_cols$code
+
+map_to_colors <- function(quartile_alpha, sr_binned){
+  pos_quartile <- case_when(
+    quartile_alpha == 0.25 ~ 0,
+    quartile_alpha == 0.5 ~ 1,
+    quartile_alpha == 0.75 ~ 2,
+    quartile_alpha == 1 ~ 3
+  )
+  pos_sr_binned <- case_when(
+    sr_binned == 'S<0.8' ~ 4 * 4 + 1,
+    sr_binned == '0.8\u2264 S < 1.25' ~ 4 * 3 + 1,
+    sr_binned == '1.25\u2264 S < 2' ~ 4 * 2 + 1,
+    sr_binned == '2\u2264 S < 5' ~ 4 + 1,
+    sr_binned == 'S \u2265 5' ~ 1
+  )
+  code <- pos_quartile + pos_sr_binned
+  return(letters[code])
+}
+
+quartiles <- sr %>% 
+  summarise(quant = quantile(
+    log(selection_ratio)/10^var_log, 
+    #selection_ratio / ci,
+                             probs = c(0.25, 0.5, 0.75))) %>%
+  pull(quant)
+p <- sr_x_county %>%
+  mutate(quartile_alpha = assign_quartile(
+    #sr / ci, 
+    sr / 10^var_log,
+    quartiles)
+    ) %>%
+  mutate(sr_binned = case_when(
+    sr < 0.8 ~ 'S<0.8',
+    sr >= 0.8 & sr < 1.25 ~ '0.8\u2264 S < 1.25',
+    sr >= 1.25 & sr < 2 ~ '1.25\u2264 S < 2',
+    sr >= 2 & sr < 5 ~'2\u2264 S < 5',
+    sr > 5 ~ 'S \u2265 5'
+  )) %>%
+  mutate(
+    color_code = map_to_colors(quartile_alpha, sr_binned) #%>%
+      #tibble(code = .)
+  ) %>%
+  #bind_rows(sr_x_county) %>%
+  mutate(color_code = factor(color_code, levels = letters[1:20])) %>%
+  ggplot(data = .,
+         mapping = aes(x = long, y = lat,
+                       group = group,
+                       fill = color_code,
+                       #fill = factor(sr_binned, levels = fct_order),
+                       #alpha = quartile_alpha)) +
+         )) +
+  geom_polygon(color = "white", size = 0.2) +
+  scale_fill_manual('Selection ratio S', 
+                    values = all_cols$cols, 
+                    labels = all_cols$code,
+                    na.value = 'gray90', drop = FALSE) +
+  theme_classic() +
+  theme(
+    axis.title = element_blank(),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank()) +
+  guides(fill = guide_legend('', ncol = 4, byrow = TRUE)) + 
+  theme(legend.text=element_blank())
+p
+#adj <- 0.015
+#(p + theme(plot.margin=unit(c(0,1.4,0,0),"cm"))) %>%
+# ggdraw(.) + 
+#   draw_text(text = 'S \u2265 5',x=0.97-adj,y=0.65, size = 10) + 
+#   draw_text(text = '2 \u2264 S < 5',x=0.97-adj,y=0.58, size = 10) + 
+#   draw_text(text = '1.25 \u2264 S < 2',x=0.985-adj,y=0.51, size = 10) + 
+#   draw_text(text = '0.8 \u2264 S < 1.25',x=0.99-adj,y=0.445, size = 10) + 
+#   draw_text(text = 'S > 0.8',x=0.97-adj,y=0.38, size = 10)
+
+dir.create(here('scripts', 'R', 'plots'))
+ggsave(here('scripts', 'R', 'plots', 'selection_ratio_by_county.pdf'),
+       height = 10, width = 16,
+       device=cairo_pdf)
 
 # opacity https://gist.github.com/lopspower/03fb1cc0ac9f32ef38f4
 
-# bvColors=c(
-#            "#FA2F03","#CB5C45","#A35C4D","#6A4942","#6A4942",
-#            "#FA2F03E6","#CB5C45E6","#A35C4DE6","#6A4942E6","#6A4942E6",
-#            "#FF2F0380","#CB5C4580","#A35C4D80","#6A494280","#6A494280")
-# legendGoal=melt(matrix(1:15,nrow=5, byrow = TRUE))
-# test <-ggplot(legendGoal, aes(Var2,Var1,fill = as.factor(value)))+ geom_tile()
-# test <- test + scale_fill_manual(values=bvColors,drop=FALSE)
-# test <-test+guides(fill = guide_legend('', ncol = 3, byrow = TRUE))
-# test <-test + theme(legend.text=element_blank())
-# test<-ggdraw(test) + draw_text(text = "S > 0.8 \n 0.8\u2264 S < 1.25\n 1.25\u2264 S < 2\n 2\u2264 S < 5\n S \u2265 5",x=0.8,y=0.5)
-# ##+ draw_text(text = "More Var 1 -->",x=0.84,y=0.5,angle=270)
-# test
+cols <- c("#D55E00", "#CC79A7", "#F0E442","#56B4E9", "#009E73")
+opacity <- c('', 'E6', '80', '4D')
+all_cols <- cols %>% purrr::map(~ paste0(.x, opacity)) %>%
+  unlist()
+
+library(reshape2)
+legendGoal=melt(matrix(1:15,nrow=5, byrow = TRUE))
+test <-ggplot(legendGoal, aes(Var2,Var1,fill = as.factor(value)))+ geom_tile()
+test <- test + scale_fill_manual(values=all_cols,drop=FALSE)
+test <-test+guides(fill = guide_legend('', ncol = 4, byrow = TRUE))
+test <-test + theme(legend.text=element_blank())
+#test<-ggdraw(test) + draw_text(text = "S > 0.8 \n 0.8\u2264 S < 1.25\n 1.25\u2264 S < 2\n 2\u2264 S < 5\n S \u2265 5",x=0.8,y=0.5)
+##+ draw_text(text = "More Var 1 -->",x=0.84,y=0.5,angle=270)
+test
 
 
 # figure 2 left ----
