@@ -14,15 +14,11 @@ data_path = Path(__file__).parents[3] / "data" / "NSDUH"
 
 
 def get_file(poverty: bool, urban: bool, hispanic: bool = False) -> pd.DataFrame:
-<<<<<<< HEAD
     filename = "nsduh_usage_2012_2019"
     if hispanic:
         filename += "_hispincluded"
     else:
         filename += "_nohisp"
-=======
-    filename = "nsduh_usage_2007_2019_nohisp"
->>>>>>> d16af5c2cd05aadbabf34150050c90cae10e4a9e
     if poverty:
         filename += "_poverty"
     if urban:
