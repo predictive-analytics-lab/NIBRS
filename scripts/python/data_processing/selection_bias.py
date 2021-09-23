@@ -88,8 +88,6 @@ def incident_users(
 
     census_df["users_var"] = census_df["users"] * (census_df["MJ_SE"] ** 2) * 365.0
 
-    breakpoint()
-
     users = (
         census_df.groupby(["race", resolution_dict[resolution]])
         .users.sum()
