@@ -1,15 +1,15 @@
 set.seed(1321312)
 args <- commandArgs(trailingOnly = TRUE)
 
-renv::restore()
+# renv::restore()
 
 # TODO: revise
 if(length(args)!=5){
   poverty <- 0
   urban <- 0
-  hispanic_included <- 1
+  hispanic_included <- 0
   aggregate <- 0
-  year_min <- 2010
+  year_min <- 2007
   year_max <- 2019
 } else{
   print(args)
@@ -17,7 +17,7 @@ if(length(args)!=5){
   urban <- ifelse(args[2]==1, 1, 0)
   hispanic_included <- ifelse(args[3]==1, 1, 0)
   aggregate <- ifelse(args[4]==1, 1, 0)
-  year_min <- ifelse(!is.na(args[5]), args[5], 2010)
+  year_min <- ifelse(!is.na(args[5]), args[5], 2007)
   year_max <- ifelse(!is.na(args[6]), args[6], 2019)
 }
 
@@ -238,7 +238,7 @@ stats_df <- df_srv %>%
      prob_usage_one_dat = survey_mean(usage_days/30, na.rm = TRUE)
    )
 
-filename <- here('scripts', 'R', 'downloaded_data',
+filename <- here('data', 'NSDUH',
                  glue('nsduh_usage_{ifelse(aggregate==1, "aggregate_", "")}{min(years)}_{max(years)}{ifelse(hispanic_included == 1, "_hispincluded", "_nohisp")}{ifelse(poverty==1, "_poverty", "")}{ifelse(urban==1, "_urban", "")}.csv'))
 
 stats_df %>%

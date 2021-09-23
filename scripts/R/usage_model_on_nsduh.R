@@ -1,16 +1,22 @@
 
 args <- commandArgs(trailingOnly = TRUE)
 
-# TODO: revise
-if(length(args)!=3){
+
+if(length(args)!=6){
   poverty <- 0
   urban <- 0
-  hispanic_included <- 0
+  hispanics_included <- 0
+  aggregate <- 0
+  year_min <- 2010
+  year_max <- 2019
 } else{
   print(args)
   poverty <- ifelse(args[1]==1, 1, 0)
   urban <- ifelse(args[2]==1, 1, 0)
-  hispanic_included <- ifelse(args[3]==1, 1, 0) # TODO: add this
+  hispanics_included <- ifelse(args[3]==1, 1, 0)
+  aggregate <- ifelse(args[4]==1, 1, 0)
+  year_min <- ifelse(!is.na(args[5]), args[5], 2010)
+  year_max <- ifelse(!is.na(args[6]), args[6], 2019)
 }
 
 library(dplyr)
@@ -20,19 +26,22 @@ library(vroom)
 library(glue)
 library(here)
 library(srvyr)
+library(missRanger)
 library(cli)
 
 
 cli_h1('Processing NSDUH files!')
 cli_text('Parameters')
-cli_li(glue('poverty :{poverty}'))
+cli_li(glue('poverty: {poverty}'))
 cli_li(glue('urban: {urban}'))
-cli_li(glue('hispanic included: {hispanic_included}'))
+cli_li(glue('hispanic included: {hispanics_included}'))
+cli_li(glue('aggregate: {aggregate}'))
+cli_li(glue('years: {year_min}-{year_max}'))
 cli_h1('')
 
 # download and store all files ----
 
-years <- 2012:2019
+years <- year_min:year_max
 get_nsduh_data <- function(year){
     download.file(url = glue('https://www.datafiles.samhsa.gov/sites/default/files/field-uploads-protected/studies/NSDUH-{year}/NSDUH-{year}-datasets/NSDUH-{year}-DS0001/NSDUH-{year}-DS0001-bundles-with-study-info/NSDUH-{year}-DS0001-bndl-data-tsv.zip'),
                   destfile = here('scripts', 'R', 'downloaded_data', 'nsduh.zip'))
@@ -84,6 +93,9 @@ cols_to_keep <- c(
                   "IRFAMIN3", # RECODE - TOT FAM INCOME - IMPUTATION REVISED
                   "POVERTY3", # RC-POVERTY LEVEL (% OF US CENSUS POVERTY THRESHOLD)
                   "POVERTY2",
+                  "MMBT30DY",
+                  "MMT30FRQ",
+                  "MMBPLACE",
                   "ANALWT_C",
                   "VESTR" # stratum
 )
@@ -96,11 +108,6 @@ df <- df_list %>% map_dfr(~ .x %>% select(any_of(cols_to_keep)),
 
 df <- df %>%
   mutate(
-    race = case_when(
-      NEWRACE2 == 1 ~ 'white', # hispanic excluded atm
-      NEWRACE2 == 2 ~ 'black',
-      NEWRACE2 >= 3 ~ 'other' # hispanic excluded
-    ),
     sex = case_when(
       IRSEX == 1 ~ 'male',
       IRSEX == 2~ 'female'
@@ -150,10 +157,24 @@ df <- df %>%
     usage_agefirsttime = case_when(
       MJAGE >= 1 & MJAGE <= 82 ~ MJAGE,
       MJAGE == 991 ~ 0
+    ),
+    days_bought_marijuana = case_when(
+      MMBT30DY >= 1 & MMBT30DY <= 30 ~ MMBT30DY,
+      MMBT30DY == 91 | MMBT30DY == 93 | MMBT30DY == 99 ~ 0
+    ),
+    days_traded_marijuana = case_when(
+      MMT30FRQ >= 1 & MMT30FRQ <= 30 ~ MMT30FRQ,
+      MMT30FRQ == 91 | MMT30FRQ == 93 | MMT30FRQ == 99 ~ 0
+    ),
+    days_bought_marijuana_outside = case_when(
+      MMBT30DY >= 1 & MMBT30DY <= 30 & MMBPLACE != 4 ~ MMBT30DY,
+      MMBT30DY == 91 | MMBT30DY == 93 | MMBT30DY == 99 ~ 0
+    ),
+    days_traded_marijuana_outside = case_when(
+      MMT30FRQ >= 1 & MMT30FRQ <= 30 & MMBPLACE != 4 ~ MMBT30DY,
+      MMT30FRQ == 91 | MMT30FRQ == 93 | MMT30FRQ == 99 ~ 0
     )
-  ) %>%
-  select(-NEWRACE2, -IRSEX, -CATAG6, -CATAG7, -POVERTY3, -MJDAY30A, -MJAGE,
-         -COUTYP4, -COUTYP2, -POVERTY2)
+  )
 
 # transform age again to match the Census categories
 # (old code)
@@ -168,7 +189,7 @@ df <- df %>%
 # generate stats of interest ----
 
 # make sure we have all the info
-df %>% count(sex, race, age, poverty_level, year)
+#df %>% count(sex, race, age, poverty_level, year)
 
 # look at some stats (without taking into account the survey structure )
 # df %>%
@@ -180,26 +201,69 @@ df %>% count(sex, race, age, poverty_level, year)
 #     ever = mean(ifelse(usage_ever=='yes', 1, 0), na.rm = TRUE)
 #   )
 
+if(hispanics_included == 1){
+
+  # impute missing data
+  imputed_df <- missRanger(df %>% select(NEWRACE2, IRFAMIN3, sex, age, usage_ever, poverty_level, is_urban, usage_agefirsttime), pmm.k = 3, num.trees = 100)
+
+  # fit rf
+  rf <- ranger(is_white ~ sex + age + usage_ever + IRFAMIN3 + poverty_level + poverty_level + usage_agefirsttime,
+               data = imputed_df %>% mutate(is_white = case_when(
+                 NEWRACE2 == 1 ~ 1,
+                 NEWRACE2 == 2 ~ 0
+               )) %>%
+                 mutate(is_white = as.factor(is_white)) %>%
+                 filter(!is.na(is_white)),
+               probability = TRUE
+  )
+  pred_is_white <- predict(rf, imputed_df %>% filter(NEWRACE2 == 7))$predictions
+  # we can't really predict race well, but going with this for the moment
+  col_to_use <- ifelse(mean(pred_is_white[,1]>0.5)>0.5, 1, 2)
+  pred_is_white <- pred_is_white[,col_to_use]
+
+  # randomly sample which race the person belongs to
+  df[df$NEWRACE2 == 7,'NEWRACE2'] <- ifelse(runif(length(pred_is_white), 0, 1) < pred_is_white, 1, 2)
+}
+
+df <- df %>%
+  mutate(race = case_when(
+    NEWRACE2 == 1 ~ 'white',
+    NEWRACE2 == 2 ~ 'black',
+    NEWRACE2 >= 3 ~ 'other'
+  ))  %>%
+  select(-NEWRACE2, -IRSEX, -CATAG6, -CATAG7, -POVERTY3, -MJDAY30A, -MJAGE,
+         -COUTYP4, -COUTYP2, -POVERTY2, -MMBT30DY, -MMT30FRQ, -MMBPLACE)
+
 # transform into survey data syntax http://gdfe.co/srvyr/
 df_srv <- df %>%
   as_survey_design(strata = VESTR, weights = ANALWT_C)
 
 vars_group <- c('race', 'sex', 'age')
+if(aggregate!=1) vars_group <- c('year', vars_group)
 if(poverty == 1)  vars_group <- c(vars_group, 'poverty_level')
 if(urban == 1)  vars_group <- c(vars_group, 'is_urban')
 
+
 # TODO: look at how variance is computed without the replicate weights
 stats_df <- df_srv %>%
-  filter(year == 2012) %>%
    group_by(across(all_of(vars_group))) %>%
    summarise(
      ever_used = survey_mean(usage_ever, na.rm = TRUE),
-     mean_usage_days = survey_mean(usage_days, na.rm = TRUE)
+     mean_usage_day = survey_mean(usage_days/30, na.rm = TRUE),
+     mean_bought_day = survey_mean(days_bought_marijuana/30, na.rm = TRUE),
+     mean_bought_outside_day = survey_mean(days_bought_marijuana_outside/30,
+                                            na.rm = TRUE),
+     mean_traded_day = survey_mean(days_traded_marijuana/30,
+                                    na.rm = TRUE),
+     mean_traded_outside_day = survey_mean(days_traded_marijuana_outside/30,
+                                            na.rm = TRUE)
    )
 
+dir.create(here('scripts', 'R', 'downloaded_data', 'nsduh'))
+filename <- here('scripts', 'R', 'downloaded_data', 'nsduh', glue('nsduh_usage_{ifelse(aggregate==1, "aggregate_", "")}{min(years)}_{max(years)}{ifelse(hispanic_included == 1, "_hispincluded", "_nohisp")}{ifelse(poverty==1, "_poverty", "")}{ifelse(urban==1, "_urban", "")}.csv'))
+
 stats_df %>%
-  write_csv(here('scripts', 'R', 'downloaded_data',
-                 glue('nsduh_usage_{min(years)}_{max(years)}{ifelse(hispanic_included == 1, "_hispincluded", "_nohisp")}{ifelse(poverty==1, "_poverty", "")}{ifelse(urban==1, "_urban", "")}')))
+  write_csv(filename)
 
 
 # old code ----
