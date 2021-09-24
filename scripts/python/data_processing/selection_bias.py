@@ -55,19 +55,20 @@ def incident_users(
     nsduh_df: pd.DataFrame,
     resolution: str,
     poverty: bool,
-    urban: bool,
+    metro: bool,
     years: bool = False,
 ) -> pd.DataFrame:
     vars = ["race", "age", "sex"]
     if poverty:
         vars += ["poverty"]
-    if urban:
-        vars += ["urbancounty"]
-    if poverty and urban:
-        raise ValueError("Only EITHER poverty OR urban may be used.")
+    if metro:
+        vars += ["metrocounty"]
+    if poverty and metro:
+        raise ValueError("Only EITHER poverty OR metro may be used.")
     if years:
         vars += ["year"]
     # 30053
+
     census_df = census_df[
         census_df[resolution_dict[resolution]].isin(
             nibrs_df[resolution_dict[resolution]]
@@ -185,7 +186,17 @@ def add_extra_information(
         .reset_index()
     )
 
-    if geographic_resolution == "county" and isinstance(year, int):
+    if geographic_resolution == "county":
+        if isinstance(year, int):
+            coverage = pd.read_csv(
+                data_path / "misc" / "county_coverage.csv",
+                usecols=["FIPS", "coverage", "year"],
+                dtype={"FIPS": str, "year": int},
+            )
+            selection_bias_df["year"] = year
+            selection_bias_df = selection_bias_df.merge(
+                coverage, how="left", on=["FIPS", "year"]
+            )
         urban_codes = pd.read_csv(
             data_path / "misc" / "NCHSURCodes2013.csv",
             usecols=["FIPS code", "2013 code"],
@@ -194,15 +205,9 @@ def add_extra_information(
             columns={"FIPS code": "FIPS", "2013 code": "urban_code"}, inplace=True
         )
         urban_codes["FIPS"] = urban_codes.FIPS.apply(lambda x: str(x).rjust(5, "0"))
-        selection_bias_df = selection_bias_df.merge(urban_codes, how="left", on="FIPS")
-        coverage = pd.read_csv(
-            data_path / "misc" / "county_coverage.csv",
-            usecols=["FIPS", "coverage", "year"],
-            dtype={"FIPS": str, "year": int},
-        )
-        selection_bias_df["year"] = year
+
         selection_bias_df = selection_bias_df.merge(
-            coverage, how="left", on=["FIPS", "year"]
+            urban_codes, how="left", on="FIPS"
         )
 
     selection_bias_df = selection_bias_df.merge(
@@ -246,14 +251,15 @@ def load_datasets(
     years: str,
     resolution: str,
     poverty: bool,
-    urban: bool,
+    metro: bool,
     all_incidents: bool,
     target: str,
+    arrests: bool,
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    census_df = get_census_data(years=years, poverty=poverty, urban=urban)
-    nsduh_df = get_nsduh_data(years=years, poverty=poverty, urban=urban, target=target)
+    census_df = get_census_data(years=years, poverty=poverty, metro=metro)
+    nsduh_df = get_nsduh_data(years=years, poverty=poverty, metro=metro, target=target)
     nibrs_df = load_and_process_nibrs(
-        years=years, resolution=resolution, all_incidents=all_incidents
+        years=years, resolution=resolution, all_incidents=all_incidents, arrests=arrests
     )
     return census_df, nsduh_df, nibrs_df
 
@@ -395,12 +401,13 @@ def main(
     ci: Optional[Literal["none", "wilson", "bootstrap"]],
     bootstraps: int,
     poverty: bool,
-    urban: bool,
+    metro: bool,
     all_incidents: bool,
     urban_filter: int,
     smoothing_param: int,
     group_years: bool,
     target: str,
+    arrests: bool,
 ):
 
     if not group_years:
@@ -421,7 +428,7 @@ def main(
 
         try:
             census_df, nsduh_df, nibrs_df = load_datasets(
-                str(yi), resolution, poverty, urban, all_incidents, target
+                str(yi), resolution, poverty, metro, all_incidents, target, arrests
             )
         except FileNotFoundError:
             warnings.warn(f"Data missing for {yi}. Skipping.")
@@ -434,7 +441,7 @@ def main(
             nibrs_df, census_df = smooth_data(
                 nibrs_df,
                 census_df,
-                urban=urban,
+                metro=metro,
                 poverty=poverty,
                 urban_filter=urban_filter,
                 smoothing_param=smoothing_param,
@@ -444,7 +451,7 @@ def main(
 
         #### START ####
         incident_users_df = incident_users(
-            nibrs_df, census_df, nsduh_df, resolution, poverty, urban, years=group_years
+            nibrs_df, census_df, nsduh_df, resolution, poverty, metro, years=group_years
         )
         incident_users_df = incident_users_df.fillna(0)
 
@@ -467,6 +474,11 @@ def main(
 
     filename = f"selection_ratio_{resolution}_{year}"
 
+    if arrests:
+        selection_bias_df.columns = [
+            col.replace("incident", "arrest") for col in selection_bias_df.columns
+        ]
+
     if group_years:
         filename += "_grouped"
 
@@ -478,8 +490,8 @@ def main(
     if poverty:
         filename += "_poverty"
 
-    if urban:
-        filename += "_urban"
+    if metro:
+        filename += "_metro"
 
     if all_incidents:
         filename += "_all_incidents"
@@ -494,6 +506,9 @@ def main(
 
     if target != "using":
         filename += f"_{target}"
+
+    if arrests:
+        filename += "_arrests"
 
     filename += ".csv"
     selection_bias_df.to_csv(data_path / "output" / filename)
@@ -536,8 +551,8 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--urban",
-        help="Whether to include urban/rural definitions in the usage model.",
+        "--metro",
+        help="Whether to include metro/non-metro definitions in the usage model.",
         default=False,
         action="store_true",
     )
@@ -572,6 +587,13 @@ if __name__ == "__main__":
         using, buying, buying_outside, traded, traded_outside""",
         default="using",
     )
+    parser.add_argument(
+        "--arrests",
+        help="""Whether to calculate the selection bias according to arrests,
+        rather than incidents.""",
+        action="store_true",
+        default=False,
+    )
 
     args = parser.parse_args()
 
@@ -585,10 +607,11 @@ if __name__ == "__main__":
         ci=args.ci.lower(),
         bootstraps=int(args.bootstraps),
         poverty=args.poverty,
-        urban=args.urban,
+        metro=args.metro,
         all_incidents=args.all_incidents,
         urban_filter=args.urban_filter,
         smoothing_param=args.smoothing_param,
         group_years=args.group_years,
         target=args.target,
+        arrests=args.arrests,
     )
