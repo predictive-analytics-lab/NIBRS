@@ -54,7 +54,7 @@ poverty_using = pd.read_csv(
     / "output"
     / "selection_ratio_county_2017-2019_grouped_bootstraps_1000_poverty.csv",
     dtype={"FIPS": str},
-    usecols=["FIPS", "selection_ratio", "var_log"],
+    usecols=["FIPS", "selection_ratio", "var_log", "bwratio", "urban_code"],
 )
 
 poverty_buying = pd.read_csv(
@@ -183,17 +183,17 @@ for name in names:
         coef = model_res.params[1]
         pvalue = model_res.pvalues[1]
         std_error = model_res.HC1_se[1]
-        g = sns.jointplot(
-            data=tfi,
-            x=col,
-            y=f"selection_ratio_log10_{name}",
-            kind="reg",
-        )
-        plt.text(x=0.5, y=2.2, s=f"slope: {coef:.3f}\n ci: {pvalue:.3f}")
-        g.ax_joint.set_ylabel("log10(selection_ratio)")
-        g.ax_joint.set_xlabel(col)
-        plt.title(f"{name} {col}")
-        plt.show()
+        # g = sns.jointplot(
+        #     data=tfi,
+        #     x=col,
+        #     y=f"selection_ratio_log10_{name}",
+        #     kind="reg",
+        # )
+        # plt.text(x=0.5, y=2.2, s=f"slope: {coef:.3f}\n ci: {pvalue:.3f}")
+        # g.ax_joint.set_ylabel("log10(selection_ratio)")
+        # g.ax_joint.set_xlabel(col)
+        # plt.title(f"{name} {col}")
+        # plt.show()
         result = f"{coef:.3f} ({std_error:.6f})"
         if pvalue <= 0.05:
             result += "*"
@@ -207,6 +207,7 @@ result_df = pd.DataFrame(results, columns=["model", "correlate", "coef (p-value)
 # %%
 
 correlate_order = [
+    "bwratio",
     "income_county_ratio",
     "income_bw_ratio",
     "incarceration_county_ratio",
@@ -225,20 +226,21 @@ correlate_order = [
 ]
 
 correlate_names = [
+    "B/W population ratio",
     "Income",
-    "Income bw ratio",
+    "Income B/W ratio",
     "Incarceration",
-    "Incarceration bw ratio",
+    "Incarceration B/W ratio",
     "% Republican Vote Share",
     "Population density",
     "High school graduation rate",
-    "High school graduation rate bw ratio",
+    "High school graduation rate B/W ratio",
     "College graduation rate",
-    "College graduation rate bw ratio",
+    "College graduation rate B/W ratio",
     "Employment rate at 35",
-    "Employment rate at 35 bw ratio",
+    "Employment rate at 35 B/W ratio",
     "Teenage birth rate",
-    "Teenage birth rate bw ratio",
+    "Teenage birth rate B/W ratio",
     "Census Response rate",
 ]
 
@@ -261,4 +263,97 @@ pivot_df = pivot_df.rename(model_conv, axis=1)
 pivot_df.to_csv(data_path / "correlate_pivot.csv")
 df.to_csv(data_path / "processed_correlates.csv")
 
+# %%
+
+legal_states = {
+    "08": 2012,
+    "25": 2016,
+    "26": 2018,
+    "41": 2014,
+    "50": 2013,
+    "53": 2012,
+}
+
+
+def reporting_throughout(df: pd.DataFrame):
+    reported = (
+        (df.groupby("FIPS").size() == df.year.nunique())
+        .to_frame("reported")
+        .reset_index()
+    )
+    df = df.merge(reported, on="FIPS")
+    return df[df.reported]
+
+
+def filter_legal(df: pd.DataFrame, legal: bool = False):
+    def _remove_legal(key):
+        year = legal_states[key]
+        condition = (df.year >= year) & (df.FIPS.apply(lambda x: x.startswith(key)))
+        if not legal:
+            return df[~condition]
+        else:
+            return df[condition]
+
+    if not legal:
+        for key in legal_states.keys():
+            df = _remove_legal(key)
+        return df
+    else:
+        df_temp = pd.DataFrame()
+        for key in legal_states.keys():
+            df_temp = df_temp.append(_remove_legal(key))
+        return df_temp
+
+
+def get_year_data(name: str, legal: bool, reported: bool):
+    filename = "selection_ratio_county_2012-2019_bootstraps_1000"
+    if name == "Dem only":
+        filename += ".csv"
+    if name == "Dem + Pov":
+        filename += "_poverty.csv"
+    if name == "Dem + Urban":
+        filename += "_urban.csv"
+    if name == "Buying":
+        filename += "_poverty_buying.csv"
+    if name == "Buying Outside":
+        filename += "_poverty_buying_outside.csv"
+    df = pd.read_csv(data_path.parent / "output" / filename, dtype={"FIPS": str})
+    if legal:
+        df = filter_legal(df, legal=True)
+    else:
+        df = filter_legal(df, legal=False)
+    if reported:
+        df = reporting_throughout(df)
+    df["selection_ratio"] = np.log10(df["selection_ratio"])
+    y, X = dmatrices(f"selection_ratio ~ year", data=df, return_type="dataframe")
+    model = sm.WLS(
+        y,
+        X,
+        weights=1 / df["var_log"],
+    )
+    model_res = model.fit()
+    model_res = model_res.get_robustcov_results(cov_type="HC1")
+    coef = model_res.params[1]
+    pvalue = model_res.pvalues[1]
+    std_error = model_res.HC1_se[1]
+    result = f"{coef:.3f} ({std_error:.6f})"
+    if pvalue <= 0.05:
+        result += "*"
+    if pvalue <= 0.01:
+        result += "*"
+    if pvalue <= 0.001:
+        result += "*"
+    return result
+
+
+time_names = [f"Time^{i}" for i in range(1, 5)]
+
+time_results = [
+    [get_year_data(name, False, True) for name in model_names],
+    [get_year_data(name, False, False) for name in model_names],
+    [get_year_data(name, True, True) for name in model_names],
+    [get_year_data(name, True, False) for name in model_names],
+]
+
+time_df = pd.DataFrame(time_results, columns=model_names, index=time_names)
 # %%
