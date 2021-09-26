@@ -7,14 +7,14 @@ library(here)
 library(xtable)
 library(glue)
 
-df <- vroom(here('data', 'output', 'cannabis_allyears_allincidents_summary.csv'))
+df <- vroom(here('data', 'output', 'cannabis_2010-2019_allincidents_summary.csv'))
 sc <- vroom(here('data', 'output', 'urban_codes_x_county_2013.csv')) %>%
-  mutate(is_rural = ifelse(urbancounty == 'Large metro', 'urban', 'rural'))
+  mutate(is_metro = ifelse(urbancounty == 'Large metro' | urbancounty == 'Small metro', 'metro', 'nonmetro'))
 lc <- vroom(here('data', 'output', 'leaic.tsv')) %>%
   distinct(FIPS, ORI9)
 
 sc <- lc %>% inner_join(sc) %>% rename(ori = ORI9) %>%
-  distinct(ori, FIPS, is_rural)
+  distinct(ori, FIPS, is_metro)
 df <- df %>% dplyr::inner_join(sc, by = 'ori')
 
 
@@ -88,16 +88,16 @@ get_incidents_info <- function(x){
   return(tb)
 }
 
-df <- df %>% filter(data_year == 2019)
+
 df_list <- list(
-  df %>% filter(race == 'black' & is_rural == 'urban'),
-  df %>% filter(race == 'black' & sex_code == 'M' & age_num >= 18 & age_num <= 25 & is_rural == 'urban'),
-  df %>% filter(race == 'white' & is_rural == 'urban'),
-  df %>% filter(race == 'white' & sex_code == 'M' & age_num >= 18 & age_num <= 25 & is_rural == 'urban'),
-  df %>% filter(race == 'black' & is_rural == 'rural'),
-  df %>% filter(race == 'black' & sex_code == 'M' & age_num >= 18 & age_num <= 25 & is_rural == 'rural'),
-  df %>% filter(race == 'white' & is_rural == 'rural'),
-  df %>% filter(race == 'white' & sex_code == 'M' & age_num >= 18 & age_num <= 25 & is_rural == 'rural')
+  df %>% filter(race == 'black' & is_metro == 'metro'),
+  df %>% filter(race == 'black' & sex_code == 'M' & age_num >= 18 & age_num <= 25 & is_metro == 'metro'),
+  df %>% filter(race == 'white' & is_metro == 'metro'),
+  df %>% filter(race == 'white' & sex_code == 'M' & age_num >= 18 & age_num <= 25 & is_metro == 'metro'),
+  df %>% filter(race == 'black' & is_metro == 'nonmetro'),
+  df %>% filter(race == 'black' & sex_code == 'M' & age_num >= 18 & age_num <= 25 & is_metro == 'nonmetro'),
+  df %>% filter(race == 'white' & is_metro == 'nonmetro'),
+  df %>% filter(race == 'white' & sex_code == 'M' & age_num >= 18 & age_num <= 25 & is_metro == 'nonmetro')
 )
 
 
@@ -106,7 +106,6 @@ df_stats <- df_list %>%
 
 df_stats_drugs <- df_list %>%
   purrr::map(~ get_incidents_info(.x %>% filter(!other_offense)))
-
 
 
 

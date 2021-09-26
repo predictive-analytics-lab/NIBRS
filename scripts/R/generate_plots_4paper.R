@@ -11,6 +11,7 @@ library(glue)
 library(broom)
 library(maps)
 library(ggridges)
+library(tidyr)
 # library(cowplot)
 
 source(here("scripts", "R", "utils_plot.R"))
@@ -249,7 +250,8 @@ ggplot(
 
 # figure 3 ----
 
-sr <- vroom(here("data", "output", "selection_ratio_county_2010-2019_bootstraps_1000_poverty.csv"))
+sr <- vroom(here("data", "output", "selection_ratio_county_2010-2019_bootstraps_1000_poverty.csv")) %>%
+  mutate(rel_err = abs(log(selection_ratio) / sqrt(var_log)))
 sr_arrest <- vroom(here("data", "output", "selection_ratio_county_2010-2019_bootstraps_1000_poverty_arrests.csv")) %>%
   distinct(arrests, FIPS, year)
 sr <- sr %>% inner_join(sr_arrest)
@@ -269,6 +271,10 @@ legalised <- tribble(
 )
 
 # take the weighted average
+total_n_counties <- sc %>%
+  inner_join(legalised) %>%
+  group_by(state_name) %>%
+  summarise(total_n_counties = length(unique(FIPS)))
 tb_plot <- sr %>%
   inner_join(sc) %>%
   inner_join(legalised) %>%
@@ -278,41 +284,60 @@ tb_plot <- sr %>%
   filter(years_reporting == 10) %>%
   group_by(year, year_shift, state_name, year_legal) %>%
   summarise(
-    median_selection_ratio = median(selection_ratio),
-    mean_selection_ratio = sum(selection_ratio * frequency) / sum(frequency),
+    median_log_selection_ratio = median(log(selection_ratio)),
+    mean_selection_ratio = mean(selection_ratio * frequency) / sum(frequency),
+    mean_log_selection_ratio = sum(log(selection_ratio) * frequency) / sum(frequency),
+    mean_log_selection_ratio_lb = mean_log_selection_ratio - 1.96 * sqrt(1/sum(rel_err)^2 * sum(rel_err^2 * var_log)),
+    mean_log_selection_ratio_ub = mean_log_selection_ratio + 1.96 * sqrt(1/sum(rel_err)^2 * sum(rel_err^2 * var_log)),
+    #mean_log_selection_ratio_lb = mean_log_selection_ratio - 1.96 * sqrt(1/sum(frequency)^2 * sum(frequency^2 * var_log)),
+    #mean_log_selection_ratio_ub = mean_log_selection_ratio + 1.96 * sqrt(1/sum(frequency)^2 * sum(frequency^2 * var_log)),
     incidents = sum(incidents),
     log_incidents_per100k = log(sum(incidents) / sum(frequency) * 1e5),
    # log_arrests_per100k = log(sum(arrests) / sum(frequency) * 1e5),
     n_counties = length(unique(FIPS))
   ) %>%
+  inner_join(total_n_counties) %>%
   ungroup %>%
   # compute n of counties for each state (must be stable across years)
-  mutate(state_name = glue('{state_name} (# counties={n_counties})')) %>%
+  mutate(state_name = glue('{state_name} ({n_counties}/{total_n_counties} counties)')) %>%
   pivot_longer(cols = c('log_incidents_per100k', 
                         #'log_arrests_per100k',
-                        'mean_selection_ratio'),
+                        'mean_log_selection_ratio'),
                names_to = 'Variable', values_to = 'value')
+
 
 tb_plot %>%
   #filter(Variable == 'mean_selection_ratio') %>%
   # plot
   mutate(Variable = case_when(
-    Variable == 'log_incidents_per100k' ~ 'Log of incidents \nx 100k people',
-    Variable == 'mean_selection_ratio' ~ 'Mean of selection\nratio weighted\nby population'
+    Variable == 'log_incidents_per100k' ~ 'Log incidents per 100,000 people',
+    Variable == 'mean_log_selection_ratio' ~ "Mean of log selection ratio weighted by the\ninverse of the relative standard deviation"
   )) %>%
   ggplot(aes(x = year, y = value, col = Variable)) +
   geom_line() +
   theme_bw() +
+  geom_ribbon(aes(ymin = mean_log_selection_ratio_lb, ymax = mean_log_selection_ratio_ub), 
+              fill = 'blue', alpha = 0.1, show.legend = FALSE,
+              colour = NA) + 
   xlab("Year") +
   geom_vline(aes(xintercept = year_legal), linetype = "dashed", alpha = 0.5) +
   ylab("Mean log selection ratio") +
-  facet_wrap(~state_name) + 
+  facet_wrap(~state_name, ncol = 2) + 
   scale_x_continuous(breaks = seq(2010, 2018, by = 2)) + 
   scale_color_manual(values = c("#D55E00", "#0072B2")) + 
-  ylab('Value') 
-ggsave(here("scripts", "R", "plots", "sr_by_year_legalized.pdf"))
+  ylab('Value') + 
+  theme(legend.position="bottom", legend.title = element_blank())
+ggsave(here("scripts", "R", "plots", "sr_by_year_legalized.pdf"), height = 8, width = 6.5)
 
 
+tb_plot %>%
+ # filter(Variable == 'mean_log_selection_ratio') %>%
+  filter(Variable == 'log_incidents_per100k') %>%
+  group_by(state_name) %>%
+  summarise(out = list(lm(value ~ year) %>% tidy())) %>%
+  unnest(out) %>%
+  filter(term == 'year')
+  
 # 
 # p_inc <- sr %>%
 #   inner_join(sc) %>%
