@@ -346,13 +346,17 @@ def get_year_data(name: str, log_ratio:bool, legal: bool, reported: bool):
     return result
 
 
-time_names = [f"Time^{i}" for i in range(1, 5)]
+time_names = [f"Time {i}" for i in range(1, 5)] + [f"Time {i} Log SR" for i in range(1, 5)]
 
 time_results = [
-    [get_year_data(name, False, True) for name in model_names],
-    [get_year_data(name, False, False) for name in model_names],
-    [get_year_data(name, True, True) for name in model_names],
-    [get_year_data(name, True, False) for name in model_names],
+    [get_year_data(name, False, False, True) for name in model_names],
+    [get_year_data(name, False, False, False) for name in model_names],
+    [get_year_data(name, False, True, True) for name in model_names],
+    [get_year_data(name, False, True, False) for name in model_names],
+    [get_year_data(name, True, False, True) for name in model_names],
+    [get_year_data(name, True, False, False) for name in model_names],
+    [get_year_data(name, True, True, True) for name in model_names],
+    [get_year_data(name, True, True, False) for name in model_names],
 ]
 
 time_df = pd.DataFrame(time_results, columns=model_names, index=time_names)
