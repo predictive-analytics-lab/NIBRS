@@ -60,6 +60,7 @@ correlate_map = {
 
 df = df[df["Property"].isin(correlate_map.keys())]
 df["Property"] = df["Property"].map(correlate_map)
+df.Correlate_Value = df.Correlate_Value.astype(float)
 
 # %%
 
@@ -95,7 +96,7 @@ plt.show()
 
 df_poverty = df[df.Model == "Dems + Poverty"]
 
-g = sns.FacetGrid(df_poverty, col="Property", col_wrap=4, sharex=False)
+g = sns.FacetGrid(df_poverty, col="Property", col_wrap=4)
 
 g.map(
     sns.scatterplot,
