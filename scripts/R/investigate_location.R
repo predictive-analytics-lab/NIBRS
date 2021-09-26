@@ -3,8 +3,15 @@ library(vroom)
 library(tidyverse)
 library(here)
 
-df <- vroom(here('data', 'NIBRS', 'incidents_processed_2019.csv'))
+#df <- vroom(here('data', 'NIBRS', 'incidents_processed_2019.csv'))
+df <- vroom(here('data', 'output', 'cannabis_2010-2019_allincidents_summary.csv'))
 sr <- vroom(here('data', 'output', 'selection_ratio_county_2012-2019.csv'))
+sc <- vroom(here('data', 'output', 'urban_codes_x_county_2013.csv')) %>%
+    mutate(is_metro = ifelse(urbancounty == 'Large metro' | urbancounty == 'Small metro', 'metro', 'nonmetro'))
+
+sc <- lc %>% inner_join(sc) %>% rename(ori = ORI9) %>%
+    distinct(ori, FIPS, is_metro)
+df <- df %>% dplyr::inner_join(sc, by = 'ori')
 
 # df <- df %>%
 #     inner_join(sr %>% distinct(FIPS, black_users, white_users), by = 'FIPS')
@@ -15,13 +22,31 @@ sr <- vroom(here('data', 'output', 'selection_ratio_county_2012-2019.csv'))
 # df <- df %>%
 #     mutate(users = ifelse(race == 'black', black_users, white_users))
 
+# transform locations
+all_locations <- str_split(str_remove_all(df %>% pull(location), "\\(|\\)|\\'"), pattern = '\\,')
+df$all_locations_1 <- all_locations %>% purrr::map(~ .x[[1]]) %>% unlist() %>% tolower()
+df$all_locations_2 <- all_locations %>% purrr::map(~ .x[[2]]) %>% unlist() %>% tolower()
+
+df <- df %>%
+    mutate(all_locations_1 = case_when(
+        grepl('school', all_locations_1) ~ 'school',
+        grepl('home', all_locations_1) ~ 'home',
+        grepl('road', all_locations_1) ~ 'road',
+        grepl('hotel', all_locations_1) ~ 'hotel',
+        grepl('parking', all_locations_1) ~ 'parking',
+        TRUE ~ 'other'
+    ))
+
 df %>%
-    group_by(FIPS, race, location) %>%
-    summarise(n_incidents = sum(incidents)) %>%
+    filter(!other_offense) %>%
+    filter(other_drugs_count == 0) %>%
+    filter(other_criminal_act_count == 0) %>%
+    group_by(FIPS, race, all_locations_1) %>%
+    summarise(n_incidents = n()) %>%
     inner_join(sr %>% distinct(FIPS, black_users, white_users), by = 'FIPS') %>%
     mutate(users = ifelse(race == 'black', black_users, white_users)) %>%
     ungroup %>%
-    group_by(race, location) %>%
+    group_by(race, all_locations_1) %>%
     summarise(
         prob = sum(n_incidents) / sum(users)
     ) %>%

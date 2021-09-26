@@ -7,14 +7,14 @@ library(here)
 library(xtable)
 library(glue)
 
-df <- vroom(here('data', 'output', 'cannabis_allyears_allincidents_summary.csv'))
+df <- vroom(here('data', 'output', 'cannabis_2010-2019_allincidents_summary.csv'))
 sc <- vroom(here('data', 'output', 'urban_codes_x_county_2013.csv')) %>%
-  mutate(is_rural = ifelse(urbancounty == 'Large metro', 'urban', 'rural'))
+  mutate(is_metro = ifelse(urbancounty == 'Large metro' | urbancounty == 'Small metro', 'metro', 'nonmetro'))
 lc <- vroom(here('data', 'output', 'leaic.tsv')) %>%
   distinct(FIPS, ORI9)
 
 sc <- lc %>% inner_join(sc) %>% rename(ori = ORI9) %>%
-  distinct(ori, FIPS, is_rural)
+  distinct(ori, FIPS, is_metro)
 df <- df %>% dplyr::inner_join(sc, by = 'ori')
 
 
@@ -90,14 +90,14 @@ get_incidents_info <- function(x){
 
 
 df_list <- list(
-  df %>% filter(race == 'black' & is_rural == 'urban'),
-  df %>% filter(race == 'black' & sex_code == 'M' & age_num >= 18 & age_num <= 25 & is_rural == 'urban'),
-  df %>% filter(race == 'white' & is_rural == 'urban'),
-  df %>% filter(race == 'white' & sex_code == 'M' & age_num >= 18 & age_num <= 25 & is_rural == 'urban'),
-  df %>% filter(race == 'black' & is_rural == 'rural'),
-  df %>% filter(race == 'black' & sex_code == 'M' & age_num >= 18 & age_num <= 25 & is_rural == 'rural'),
-  df %>% filter(race == 'white' & is_rural == 'rural'),
-  df %>% filter(race == 'white' & sex_code == 'M' & age_num >= 18 & age_num <= 25 & is_rural == 'rural')
+  df %>% filter(race == 'black' & is_metro == 'metro'),
+  df %>% filter(race == 'black' & sex_code == 'M' & age_num >= 18 & age_num <= 25 & is_metro == 'metro'),
+  df %>% filter(race == 'white' & is_metro == 'metro'),
+  df %>% filter(race == 'white' & sex_code == 'M' & age_num >= 18 & age_num <= 25 & is_metro == 'metro'),
+  df %>% filter(race == 'black' & is_metro == 'nonmetro'),
+  df %>% filter(race == 'black' & sex_code == 'M' & age_num >= 18 & age_num <= 25 & is_metro == 'nonmetro'),
+  df %>% filter(race == 'white' & is_metro == 'nonmetro'),
+  df %>% filter(race == 'white' & sex_code == 'M' & age_num >= 18 & age_num <= 25 & is_metro == 'nonmetro')
 )
 
 
@@ -106,7 +106,6 @@ df_stats <- df_list %>%
 
 df_stats_drugs <- df_list %>%
   purrr::map(~ get_incidents_info(.x %>% filter(!other_offense)))
-
 
 
 
@@ -135,6 +134,51 @@ print(rbind(
 ) %>% xtable(.,  align = rep('c', 10)),
          include.rownames=FALSE)  
   
+
+
+print(rbind(
+  c('# incidents', n_incidents_drugs),
+  df_stats_drugs_joined
+) %>% xtable(.,  align = rep('c', 10)),
+include.rownames=FALSE)  
+
+
+
+# generate plot ----
+
+tb_plot <- df %>%
+  group_by(data_year) %>%
+  summarise(arrests = 1 - sum(arrest_type_name == 'No Arrest')/n()) %>%
+  mutate(term = 'All incidents') %>%
+  bind_rows(
+    df %>% 
+      filter(!other_offense) %>%
+      group_by(data_year) %>%
+      summarise(arrests = 1 - sum(arrest_type_name == 'No Arrest')/n()) %>%
+      mutate(term = 'Incidents with\n only drug offenses')
+  ) %>%
+  bind_rows(
+    df %>% 
+      filter(!other_offense) %>%
+      filter(crack_count == 0 & cocaine_count == 0 & heroin_count == 0 
+             & meth_count == 0 & other_drugs_count == 0) %>%
+      group_by(data_year) %>%
+      summarise(arrests = 1 - sum(arrest_type_name == 'No Arrest')/n()) %>%
+      mutate(term = 'Incidents with\n only marijuana \noffenses')
+  )
+
+tb_plot %>%
+  rename(`Incidents type` = term) %>%
+  ggplot(aes(data_year, arrests, col = `Incidents type`)) + 
+  geom_line() + 
+  theme_bw() + 
+  xlab('Year') + 
+  ylab('% arrests') + 
+  scale_y_continuous(breaks = seq(0.65,0.85,by=0.05), 
+                     labels = glue('{100*seq(0.65,0.85,by=0.05)}%'),
+                     limits = c(0.68, 0.83)) + 
+  scale_colour_manual(values=c("#000000", "#E69F00", "#56B4E9"))
+ggsave(here('scripts', 'R', 'plots', 'arrests_by_incidentstype.pdf'), device = cairo_pdf)
 
 
 
