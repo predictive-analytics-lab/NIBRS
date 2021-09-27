@@ -23,8 +23,8 @@ def parse_dfs(directory: Path) -> List[pd.DataFrame]:
         target = f"{name}_county_ratio"
         df = _load_and_munge(file, name)
         df[target] = df[name] / df[name].mean()
-        df[target] = df[target].rank(pct = True).astype(float)
-        
+        df[target] = df[target].rank(pct=True).astype(float)
+
         if (directory / f"{name}_black.csv").exists():
             black_df = _load_and_munge(directory / f"{name}_black.csv", f"black_{name}")
             white_df = _load_and_munge(directory / f"{name}_white.csv", f"white_{name}")
@@ -32,7 +32,7 @@ def parse_dfs(directory: Path) -> List[pd.DataFrame]:
             df = pd.merge(df, white_df, on="FIPS", how="left")
             bw_target = f"{name}_bw_ratio"
             df[bw_target] = df[f"black_{name}"] / df[f"white_{name}"]
-            df[bw_target] = df[bw_target].rank(pct = True).astype(float)
+            df[bw_target] = df[bw_target].rank(pct=True).astype(float)
         df = df.drop(
             columns=list(
                 {name, f"black_{name}", f"white_{name}"}.intersection(set(df.columns))
@@ -89,15 +89,11 @@ metro_using = pd.read_csv(
 )
 
 
-poverty_using["selection_ratio_log_poverty"] = np.log(
-    poverty_using["selection_ratio"]
-)
+poverty_using["selection_ratio_log_poverty"] = np.log(poverty_using["selection_ratio"])
 poverty_using["var_log_poverty"] = poverty_using["var_log"]
 
 
-poverty_buying["selection_ratio_log_buying"] = np.log(
-    poverty_buying["selection_ratio"]
-)
+poverty_buying["selection_ratio_log_buying"] = np.log(poverty_buying["selection_ratio"])
 poverty_buying["var_log_buying"] = poverty_buying["var_log"]
 
 
@@ -203,6 +199,21 @@ for name in names:
         results += [[name, col, result]]
 
 result_df = pd.DataFrame(results, columns=["model", "correlate", "coef (p-value)"])
+
+
+def check_coef(df, col1, col2):
+    df = df[~df[col1].isnull()]
+    df = df[~df[col2].isnull()]
+    y, X = dmatrices(f"{col1} ~ {col2}", data=df, return_type="dataframe")
+    model = sm.OLS(
+        y,
+        X,
+    )
+    model_res = model.fit()
+    model_res = model_res.get_robustcov_results(cov_type="HC1")
+    print(model_res.summary())
+
+
 # %%
 
 correlate_order = [
@@ -304,7 +315,7 @@ def filter_legal(df: pd.DataFrame, legal: bool = False):
         return df_temp
 
 
-def get_year_data(name: str, log_ratio:bool, legal: bool, reported: bool):
+def get_year_data(name: str, log_ratio: bool, legal: bool, reported: bool):
     filename = "selection_ratio_county_2012-2019_bootstraps_1000"
     if name == "Dem only":
         filename += ".csv"
@@ -346,7 +357,9 @@ def get_year_data(name: str, log_ratio:bool, legal: bool, reported: bool):
     return result
 
 
-time_names = [f"Time {i}" for i in range(1, 5)] + [f"Time {i} Log SR" for i in range(1, 5)]
+time_names = [f"Time {i}" for i in range(1, 5)] + [
+    f"Time {i} Log SR" for i in range(1, 5)
+]
 
 time_results = [
     [get_year_data(name, False, False, True) for name in model_names],

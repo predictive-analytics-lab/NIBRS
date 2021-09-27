@@ -4,10 +4,16 @@ import zipfile
 from pathlib import Path
 from time import sleep
 
-aws_url_pre_2016 = 'http://s3-us-gov-west-1.amazonaws.com/cg-d3f0433b-a53e-4934-8b94-c678aa2cbaf3'
-aws_url_from_2016 = 'http://s3-us-gov-west-1.amazonaws.com/cg-d4b776d0-d898-4153-90c8-8336f86bdfec'
+aws_url_pre_2016 = (
+    "http://s3-us-gov-west-1.amazonaws.com/cg-d3f0433b-a53e-4934-8b94-c678aa2cbaf3"
+)
+aws_url_from_2016 = (
+    "http://s3-us-gov-west-1.amazonaws.com/cg-d4b776d0-d898-4153-90c8-8336f86bdfec"
+)
 
-state_abbreviations = [s.split(",")[1].strip() for s in """Alabama, AL
+state_abbreviations = [
+    s.split(",")[1].strip()
+    for s in """Alabama, AL
     Alaska, AK
     Arizona, AZ
     Arkansas, AR
@@ -56,13 +62,16 @@ state_abbreviations = [s.split(",")[1].strip() for s in """Alabama, AL
     Washington, WA
     West Virginia, WV
     Wisconsin, WI
-    Wyoming, WY""".split("\n")]
+    Wyoming, WY""".split(
+        "\n"
+    )
+]
 
 
 def download_data():
-    years = range(2012, 2020)
+    years = range(2010, 2020)
     states = state_abbreviations
-    download_location = Path(__file__).parent / 'downloads'
+    download_location = Path(__file__).parent / "downloads"
     for year in years:
         for state in states:
             if (download_location / f"{state}-{year}").exists():

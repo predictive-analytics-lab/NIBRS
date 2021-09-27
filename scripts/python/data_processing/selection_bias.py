@@ -206,9 +206,7 @@ def add_extra_information(
         )
         urban_codes["FIPS"] = urban_codes.FIPS.apply(lambda x: str(x).rjust(5, "0"))
 
-        selection_bias_df = selection_bias_df.merge(
-            urban_codes, how="left", on="FIPS"
-        )
+        selection_bias_df = selection_bias_df.merge(urban_codes, how="left", on="FIPS")
 
     selection_bias_df = selection_bias_df.merge(
         incidents, how="left", on=resolution_dict[geographic_resolution]
@@ -255,11 +253,18 @@ def load_datasets(
     all_incidents: bool,
     target: str,
     arrests: bool,
+    time: str,
+    time_type: str,
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     census_df = get_census_data(years=years, poverty=poverty, metro=metro)
     nsduh_df = get_nsduh_data(years=years, poverty=poverty, metro=metro, target=target)
     nibrs_df = load_and_process_nibrs(
-        years=years, resolution=resolution, all_incidents=all_incidents, arrests=arrests
+        years=years,
+        resolution=resolution,
+        all_incidents=all_incidents,
+        arrests=arrests,
+        time=time,
+        time_type=time_type,
     )
     return census_df, nsduh_df, nibrs_df
 
@@ -408,6 +413,8 @@ def main(
     group_years: bool,
     target: str,
     arrests: bool,
+    time: str,
+    time_type: str,
 ):
 
     if not group_years:
@@ -428,7 +435,15 @@ def main(
 
         try:
             census_df, nsduh_df, nibrs_df = load_datasets(
-                str(yi), resolution, poverty, metro, all_incidents, target, arrests
+                str(yi),
+                resolution,
+                poverty,
+                metro,
+                all_incidents,
+                target,
+                arrests,
+                time,
+                time_type,
             )
         except FileNotFoundError:
             warnings.warn(f"Data missing for {yi}. Skipping.")
@@ -506,6 +521,9 @@ def main(
 
     if target != "using":
         filename += f"_{target}"
+
+    if time != "any":
+        filename += f"_{time}_{time_type}"
 
     if arrests:
         filename += "_arrests"
@@ -594,6 +612,17 @@ if __name__ == "__main__":
         action="store_true",
         default=False,
     )
+    parser.add_argument(
+        "--time",
+        help="The time of the offense. Options: any, day, night. Default: any.",
+        type=str,
+        default="any",
+    )
+    parser.add_argument(
+        "--time_type",
+        help="""The type of time to use. Options are: simple which uses 6am-8pm inclusive, and daylight which assigns day/night based on whether it is light. Default: simple.""",
+        default="simple",
+    )
 
     args = parser.parse_args()
 
@@ -614,4 +643,6 @@ if __name__ == "__main__":
         group_years=args.group_years,
         target=args.target,
         arrests=args.arrests,
+        time=args.time,
+        time_type=args.time_type,
     )
