@@ -339,17 +339,23 @@ if __name__ == "__main__":
 
     parser.add_argument("--year", help="year, or year range.", default=2019)
     parser.add_argument(
-        "--poverty", type=bool, help="Add poverty information.", default=True
+        "--poverty",
+        help="Add poverty information.",
+        default=True,
+        action="store_true",
     )
     parser.add_argument(
-        "--metro", type=bool, help="Add metro/non-metro information.", default=True
+        "--metro",
+        help="Add metro/non-metro information.",
+        default=False,
+        action="store_true",
     )
 
     # parser.add_argument("--coverage", help="population scaled by coverage", default=False)
 
     args = parser.parse_args()
 
-    df = get_census_data(str(args.year), args.poverty, args.urban)
+    df = get_census_data(str(args.year), args.poverty, args.metro)
 
     year = args.year if args.year else "2019"
     df.to_csv(data_path / "census" / f"census_processed_{year}.csv")

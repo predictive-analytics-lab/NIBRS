@@ -274,6 +274,7 @@ def load_datasets(
     arrests: bool,
     time: str,
     time_type: str,
+    hispanics: bool,
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     census_df = get_census_data(years=years, poverty=poverty, metro=metro)
     nsduh_df = get_nsduh_data(years=years, poverty=poverty, metro=metro, target=target)
@@ -285,6 +286,7 @@ def load_datasets(
             arrests=arrests,
             time=time,
             time_type=time_type,
+            hispanic=hispanics
         )
     else:
         nibrs_df = get_ucr_data(years=years, target=target)
@@ -429,6 +431,7 @@ def main(
     arrests: bool,
     time: str,
     time_type: str,
+    hispanics: bool,
 ):
 
     if not group_years:
@@ -458,6 +461,7 @@ def main(
                 arrests,
                 time,
                 time_type,
+                hispanics
             )
         except FileNotFoundError:
             warnings.warn(f"Data missing for {yi}. Skipping.")
@@ -474,6 +478,7 @@ def main(
                 poverty=poverty,
                 urban_filter=urban_filter,
                 smoothing_param=smoothing_param,
+                group_years=group_years,
             )
 
         ##### END DATA LOADING ######
@@ -490,6 +495,7 @@ def main(
             ucr=ucr,
         )
         incident_users_df = incident_users_df.fillna(0)
+        breakpoint()
 
         if ci == "none":
             temp_df = selection_ratio(incident_users_df, wilson=False)
@@ -645,7 +651,12 @@ if __name__ == "__main__":
         help="""The type of time to use. Options are: simple which uses 6am-8pm inclusive, and daylight which assigns day/night based on whether it is light. Default: simple.""",
         default="simple",
     )
-
+    parser.add_argument(
+        "--hispanics",
+        help="""Whether to include hispanics in the incident counts.""",
+        action="store_true",
+        default=False,
+    )
     args = parser.parse_args()
 
     if int(args.bootstraps) > 0 and args.ci != "bootstrap":
@@ -667,4 +678,5 @@ if __name__ == "__main__":
         arrests=args.arrests,
         time=args.time,
         time_type=args.time_type,
+        hispanics=args.hispanics,
     )

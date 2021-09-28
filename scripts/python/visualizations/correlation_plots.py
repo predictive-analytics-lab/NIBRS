@@ -20,11 +20,11 @@ df = df.melt(
 )
 
 mapping = {
-    "selection_ratio_log10_poverty": "Dems + Poverty",
-    "selection_ratio_log10_dem_only": "Dems Only",
-    "selection_ratio_log10_urban": "Urban Only",
-    "selection_ratio_log10_buying": "Buying",
-    "selection_ratio_log10_buying_outside": "Buying in Public",
+    "selection_ratio_log_poverty": "Dems + Poverty",
+    "selection_ratio_log_dem_only": "Dems Only",
+    "selection_ratio_log_urban": "Urban Only",
+    "selection_ratio_log_buying": "Buying",
+    "selection_ratio_log_buying_outside": "Buying in Public",
 }
 
 df["Model"] = df.Model.map(mapping)
@@ -96,7 +96,7 @@ plt.show()
 
 df_poverty = df[df.Model == "Dems + Poverty"]
 
-g = sns.FacetGrid(df_poverty, col="Property", col_wrap=4)
+g = sns.FacetGrid(df_poverty, col="Property", col_wrap=3)
 
 g.map(
     sns.scatterplot,

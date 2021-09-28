@@ -202,7 +202,7 @@ for name in names:
         # g.ax_joint.set_xlabel(col)
         # plt.title(f"{name} {col}")
         # plt.show()
-        result = f"{coef:.3f} ({std_error:.4f})"
+        result = f"{coef:.3f} ({std_error:.3f})"
         if pvalue <= 0.05:
             result += "*"
         if pvalue <= 0.01:
@@ -349,7 +349,9 @@ def get_year_data(name: str, log_ratio: bool, legal: bool, reported: bool):
         filename += "_poverty_buying_outside.csv"
     if name == "Arrests":
         filename += "_poverty_arrests.csv"
-    df = pd.read_csv(data_path.parent.parent / "turing_output" / filename, dtype={"FIPS": str})
+    df = pd.read_csv(
+        data_path.parent.parent / "turing_output" / filename, dtype={"FIPS": str}
+    )
     if legal:
         df = filter_legal(df, legal=True)
     else:
@@ -369,7 +371,7 @@ def get_year_data(name: str, log_ratio: bool, legal: bool, reported: bool):
     coef = model_res.params[1]
     pvalue = model_res.pvalues[1]
     std_error = model_res.HC1_se[1]
-    result = f"{coef:.3f} ({std_error:.4f})"
+    result = f"{coef:.3f} ({std_error:.3f})"
     if pvalue <= 0.05:
         result += "*"
     if pvalue <= 0.01:

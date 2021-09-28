@@ -24,6 +24,7 @@ data_name_drug_incidents = data_path / "NIBRS" / "raw" / "cannabis_allyears.csv"
 data_name_all_incidents = (
     data_path / "NIBRS" / "raw" / "cannabis_allyears_allincidents.csv"
 )
+data_name_hispanics = data_path / "NIBRS" / "raw" / "cannabis_allyears_hispanics.csv"
 fips_to_latlong = pd.read_csv(
     data_path / "misc" / "us-county-boundaries-latlong.csv", dtype={"FIPS": str}
 )
@@ -142,6 +143,8 @@ def load_and_process_nibrs(
 
     if all_incidents:
         nibrs_df = pd.read_csv(data_name_all_incidents, usecols=cols_to_use)
+    elif hispanic:
+        nibrs_df = pd.read_csv(data_name_hispanics, usecols=cols_to_use)
     else:
         nibrs_df = pd.read_csv(data_name_drug_incidents, usecols=cols_to_use)
 
