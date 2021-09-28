@@ -14,8 +14,10 @@ from collections import Counter
 from ast import literal_eval as make_tuple
 from astral.sun import sunrise, sunset
 from astral import Observer
-from timezonefinder import TimezoneFinder
+from pytz import timezone
 import datetime
+from tqdm import tqdm
+import swifter
 
 data_path = Path(__file__).parent.parent.parent.parent / "data"
 data_name_drug_incidents = data_path / "NIBRS" / "raw" / "cannabis_allyears.csv"
@@ -91,10 +93,12 @@ def transform_location(location: tuple) -> str:
 
 @functools.lru_cache(maxsize=None)
 def sunrise_sunset_time(
-    latitude: float, longitude: float, incident_date: datetime, incident_hour: int
+    latitude: float,
+    longitude: float,
+    timezone: str,
+    incident_date: datetime,
+    incident_hour: int,
 ) -> Tuple[int, int]:
-    tzf = TimezoneFinder()
-    timezone = tzf.timezone_at(lat=latitude, lng=longitude)
     county = Observer(latitude=latitude, longitude=longitude)
     sunrise_time = sunrise(county, date=incident_date, tzinfo=timezone)
     sunset_time = sunset(county, date=incident_date, tzinfo=timezone)
@@ -180,7 +184,7 @@ def load_and_process_nibrs(
         if time_type.lower() == "daylight":
             nibrs_df["night_day"] = nibrs_df.apply(
                 lambda x: sunrise_sunset_time(
-                    x.lat, x.lon, x.incident_date, x.incident_hour
+                    x.lat, x.lon, x.timezone, x.incident_date, x.incident_hour
                 ),
                 axis=1,
             )

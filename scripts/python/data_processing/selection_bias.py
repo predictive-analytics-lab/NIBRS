@@ -20,6 +20,7 @@ import subprocess
 from process_census_data import get_census_data
 from process_nsduh_data import get_nsduh_data
 from process_nibrs_data import load_and_process_nibrs
+from process_ucr_data import get_ucr_data
 from smooth import smooth_data
 
 ##### LOAD DATASETS ######
@@ -57,6 +58,7 @@ def incident_users(
     poverty: bool,
     metro: bool,
     years: bool = False,
+    ucr: bool = False,
 ) -> pd.DataFrame:
     vars = ["race", "age", "sex"]
     if poverty:
@@ -110,33 +112,47 @@ def incident_users(
         index=resolution_dict[resolution], columns="race", values="user_var"
     )
 
-    incidents = (
-        nibrs_df.groupby(
-            sorted(["race"] + [resolution_dict[resolution]], key=str.casefold)
+    if not ucr:
+        incidents = (
+            nibrs_df.groupby(
+                sorted(["race"] + [resolution_dict[resolution]], key=str.casefold)
+            )
+            .incidents.sum()
+            .to_frame("incident_count")
+            .reset_index()
         )
-        .incidents.sum()
-        .to_frame("incident_count")
-        .reset_index()
-    )
-    incidents = incidents.pivot(
-        index=resolution_dict[resolution], columns="race", values="incident_count"
-    )
+        incidents = incidents.pivot(
+            index=resolution_dict[resolution], columns="race", values="incident_count"
+        )
+    else:
+        incidents = nibrs_df
     incidents = incidents.merge(users, on=resolution_dict[resolution])
     df = incidents.merge(users_var, on=resolution_dict[resolution])
     df = df.rename(
-        {"black": "black_users_variance", "white": "white_users_variance"}, axis=1
+        {
+            "black": "black_users_variance",
+            "white": "white_users_variance",
+            "black_x": "black_incidents",
+            "black_y": "black_users",
+            "white_x": "white_incidents",
+            "white_y": "white_users",
+        },
+        axis=1,
     )
     return df
 
 
 def selection_ratio(incident_user_df: pd.DataFrame, wilson: bool) -> pd.DataFrame:
     incident_user_df = incident_user_df.fillna(0).reset_index()
-    incident_user_df = incident_user_df[incident_user_df.black_y > 0]
-    incident_user_df = incident_user_df[incident_user_df.white_y > 0]
+    incident_user_df = incident_user_df[incident_user_df.black_users > 0]
+    incident_user_df = incident_user_df[incident_user_df.white_users > 0]
     if wilson:
         incident_user_df["result"] = incident_user_df.apply(
             lambda x: wilson_selection(
-                x["black_x"], x["black_y"], x["white_x"], x["white_y"]
+                x["black_incidents"],
+                x["black_users"],
+                x["white_incidents"],
+                x["white_users"],
             ),
             axis=1,
         )
@@ -147,16 +163,19 @@ def selection_ratio(incident_user_df: pd.DataFrame, wilson: bool) -> pd.DataFram
     else:
         incident_user_df["selection_ratio"] = incident_user_df.apply(
             lambda x: simple_selection_ratio(
-                x["black_x"], x["black_y"], x["white_x"], x["white_y"]
+                x["black_incidents"],
+                x["black_users"],
+                x["white_incidents"],
+                x["white_users"],
             ),
             axis=1,
         )
     incident_user_df = incident_user_df.rename(
         columns={
-            "black_x": "black_incidents",
-            "black_y": "black_users",
-            "white_x": "white_incidents",
-            "white_y": "white_users",
+            "black_incidents": "black_incidents",
+            "black_users": "black_users",
+            "white_incidents": "white_incidents",
+            "white_users": "white_users",
         }
     )
     return incident_user_df
@@ -258,14 +277,17 @@ def load_datasets(
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     census_df = get_census_data(years=years, poverty=poverty, metro=metro)
     nsduh_df = get_nsduh_data(years=years, poverty=poverty, metro=metro, target=target)
-    nibrs_df = load_and_process_nibrs(
-        years=years,
-        resolution=resolution,
-        all_incidents=all_incidents,
-        arrests=arrests,
-        time=time,
-        time_type=time_type,
-    )
+    if target not in ["dui", "drunkeness", "ucr_possesion"]:
+        nibrs_df = load_and_process_nibrs(
+            years=years,
+            resolution=resolution,
+            all_incidents=all_incidents,
+            arrests=arrests,
+            time=time,
+            time_type=time_type,
+        )
+    else:
+        nibrs_df = get_ucr_data(years=years, target=target)
     return census_df, nsduh_df, nibrs_df
 
 
@@ -320,25 +342,25 @@ def bootstrap_selection(incident_users_df: pd.DataFrame, bootstraps: int):
 
     black_count = []
     white_count = []
-    incident_users_df.black_x += 0.5
-    incident_users_df.white_x += 0.5
-    incident_users_df.black_y += 1
-    incident_users_df.white_y += 1
-    incident_users_df["black_prob"] = incident_users_df.black_x / (
-        incident_users_df.black_y
+    incident_users_df.black_incidents += 0.5
+    incident_users_df.white_incidents += 0.5
+    incident_users_df.black_users += 1
+    incident_users_df.white_users += 1
+    incident_users_df["black_prob"] = incident_users_df.black_incidents / (
+        incident_users_df.black_users
     )
-    incident_users_df["white_prob"] = incident_users_df.white_x / (
-        incident_users_df.white_y
+    incident_users_df["white_prob"] = incident_users_df.white_incidents / (
+        incident_users_df.white_users
     )
     for i, row in incident_users_df.iterrows():
         white_vector = _sample_incidents(
-            row["white_prob"], row["white_y"], bootstraps, seed=1
+            row["white_prob"], row["white_users"], bootstraps, seed=1
         )
         black_vector = _sample_incidents(
-            row["black_prob"], row["black_y"], bootstraps, seed=1
+            row["black_prob"], row["black_users"], bootstraps, seed=1
         )
-        selection_ratios = (black_vector / row["black_y"]) / (
-            white_vector / row["white_y"]
+        selection_ratios = (black_vector / row["black_users"]) / (
+            white_vector / row["white_users"]
         )
         selection_ratios = np.nan_to_num(selection_ratios, nan=np.inf, posinf=np.inf)
         incident_users_df.loc[i, "selection_ratio"] = (
@@ -356,14 +378,6 @@ def bootstrap_selection(incident_users_df: pd.DataFrame, bootstraps: int):
         incident_users_df.loc[i, "white_incident_variance"] = np.nan_to_num(
             np.var(white_vector), nan=0
         )
-    incident_users_df = incident_users_df.rename(
-        columns={
-            "black_x": "black_incidents",
-            "black_y": "black_users",
-            "white_x": "white_incidents",
-            "white_y": "white_users",
-        }
-    )
     return incident_users_df.reset_index()[
         [
             "FIPS",
@@ -463,10 +477,17 @@ def main(
             )
 
         ##### END DATA LOADING ######
-
+        ucr = target in ["dui", "drunkeness", "ucr_possesion"]
         #### START ####
         incident_users_df = incident_users(
-            nibrs_df, census_df, nsduh_df, resolution, poverty, metro, years=group_years
+            nibrs_df,
+            census_df,
+            nsduh_df,
+            resolution,
+            poverty,
+            metro,
+            years=group_years,
+            ucr=ucr,
         )
         incident_users_df = incident_users_df.fillna(0)
 
@@ -478,11 +499,12 @@ def main(
             temp_df = bootstrap_selection(incident_users_df, bootstraps)
             temp_df = delta_method(temp_df)
 
-        temp_df = add_extra_information(
-            temp_df, incident_df, population_df, resolution, yi
-        )
-        temp_df = add_race_ratio(population_df, temp_df, resolution)
-        #### END ###
+        if not ucr:
+            temp_df = add_extra_information(
+                temp_df, incident_df, population_df, resolution, yi
+            )
+            temp_df = add_race_ratio(population_df, temp_df, resolution)
+            #### END ###
 
         temp_df["year"] = yi
         selection_bias_df = selection_bias_df.append(temp_df.copy())
@@ -602,7 +624,7 @@ if __name__ == "__main__":
         "--target",
         type=str,
         help="""The target to use, options are: 
-        using, buying, buying_outside, traded, traded_outside""",
+        using, buying, buying_outside, traded, traded_outside, dui, drunkeness, ucr_possesion""",
         default="using",
     )
     parser.add_argument(

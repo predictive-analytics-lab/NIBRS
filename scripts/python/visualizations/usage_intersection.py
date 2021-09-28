@@ -21,7 +21,7 @@ dems = pd.read_csv(
     usecols=["FIPS", "selection_ratio"],
 )
 dems["selection_ratio"] = np.log(dems["selection_ratio"])
-dems["Model"] = "Dems Only"
+dems["Model"] = "\\texttt{Use}\\textsubscript{Dmg}"
 
 
 ## POVERTY ##
@@ -34,7 +34,7 @@ poverty = pd.read_csv(
     usecols=["FIPS", "selection_ratio"],
 )
 poverty["selection_ratio"] = np.log(poverty["selection_ratio"])
-poverty["Model"] = "Dems + Poverty"
+poverty["Model"] = "\\texttt{Use}\\textsubscript{Dmg+Pov}"
 
 ## metro ##
 
@@ -46,7 +46,7 @@ metro = pd.read_csv(
     usecols=["FIPS", "selection_ratio"],
 )
 metro["selection_ratio"] = np.log(metro["selection_ratio"])
-metro["Model"] = "Dems + metro"
+metro["Model"] = "\\texttt{Use}\\textsubscript{Dmg+Metro}"
 
 ## BUYING ##
 
@@ -58,7 +58,7 @@ buying = pd.read_csv(
     usecols=["FIPS", "selection_ratio"],
 )
 buying["selection_ratio"] = np.log(buying["selection_ratio"])
-buying["Model"] = "Buying"
+buying["Model"] = "\\texttt{Purchase}"
 
 
 ## BUYING OUTSIDE ##
@@ -70,7 +70,7 @@ buying_outside = pd.read_csv(
     dtype={"FIPS": str},
     usecols=["FIPS", "selection_ratio"],
 )
-buying_outside["Model"] = "Buying Outside"
+buying_outside["Model"] = "\\texttt{Purchase}\\textsubscript{Public}"
 buying_outside["selection_ratio"] = np.log(buying_outside["selection_ratio"])
 
 ## ARRESTS ##
@@ -83,9 +83,11 @@ arrests = pd.read_csv(
     usecols=["FIPS", "selection_ratio"],
 )
 
-arrests["Model"] = "Arrests (Poverty)"
+arrests["Model"] = "\\texttt{Use}\\textsubscript{Dmg+Pov, Arrests}"
 arrests["selection_ratio"] = np.log(arrests["selection_ratio"])
 
+
+poverty_copy = poverty.copy()
 
 poverty = poverty.rename(
     columns={
@@ -94,7 +96,9 @@ poverty = poverty.rename(
     }
 )
 
+poverty_copy["Model"] = "\\texttt{Use}\\textsubscript{Dmg+Pov}"
 
+poverty_copy = poverty.merge(poverty_copy, on="FIPS")
 dems = poverty.merge(dems, on="FIPS")
 metro = poverty.merge(metro, on="FIPS")
 buying = poverty.merge(buying, on="FIPS")
@@ -103,8 +107,53 @@ arrests = poverty.merge(arrests, on="FIPS")
 
 data = pd.concat([dems, metro, buying, buying_outside, arrests], ignore_index=True)
 
+data["diff"] = data["selection_ratio"]["diff"] = (
+    data["selection_ratio"] - data["selection_ratio_base"]
+)
+
+data_copy = pd.concat([data, poverty_copy], ignore_index=True)
+
 # %%
-data["diff"] = data["selection_ratio"] - data["selection_ratio_base"]
+sns.set(font_scale=1.2, rc={"text.usetex": True, "legend.loc": "upper left"})
+
+
+sns.set_style("whitegrid")
+
+ax = sns.kdeplot(
+    data=data_copy,
+    x="selection_ratio",
+    hue="Model",
+    fill=True,
+    palette="colorblind",
+    alpha=0.5,
+    linewidth=0,
+)
+ax.set_xlim([-5, 5])
+
+ax.set_ylabel("")
+ax.set_xlabel("Differential Enforcement Ratio")
+
+plt.show()
+
+
+ax = sns.histplot(
+    data=data_copy,
+    x="selection_ratio",
+    hue="Model",
+    fill=True,
+    palette="colorblind",
+    alpha=0.5,
+    linewidth=0,
+)
+ax.set_xlim([-5, 5])
+
+ax.set_ylabel("")
+ax.set_xlabel("Differential Enforcement Ratio")
+plt.show()
+
+# %%
+sns.set(font_scale=1.2, rc={"text.usetex": True, "legend.loc": "upper right"})
+
 sns.set_style("whitegrid")
 
 ax = sns.histplot(
@@ -118,7 +167,32 @@ ax = sns.histplot(
 )
 ax.set_xlim([-2, 2])
 
-ax.set_xlabel("Selection Ratio X Model - Selection Ratio Poverty Model")
+ax.set_ylabel("")
+ax.set_xlabel(
+    "Log(enforcement ratio) - Log(enforcement ratio Usage\\textsubscript{Dmg+Pov})"
+)
+
+
+plt.show()
+
+ax = sns.kdeplot(
+    data=data,
+    x="diff",
+    hue="Model",
+    fill=True,
+    palette="colorblind",
+    alpha=0.5,
+    linewidth=0,
+)
+ax.set_xlim([-2, 2])
+
+ax.set_ylabel("")
+ax.set_xlabel(
+    "Log(enforcement ratio) - Log(enforcement ratio Usage\\textsubscript{Dmg+Pov})"
+)
+
+
+# ax.get_legend().set_bbox_to_anchor([0.5, 0.5])
 
 plt.show()
 # %%
@@ -142,9 +216,9 @@ poverty = poverty.rename(
 )
 
 day = pd.read_csv(
-    data_path
-    / "output"
-    / "selection_ratio_county_2017-2019_grouped_bootstraps_1000_poverty_day.csv",
+    data_path.parent
+    / "turing_output"
+    / "selection_ratio_county_2017-2019_grouped_bootstraps_1000_poverty_day_simple.csv",
     dtype={"FIPS": str},
     usecols=["FIPS", "selection_ratio", "white_incidents", "black_incidents"],
 )
@@ -152,9 +226,9 @@ day["selection_ratio"] = np.log(day["selection_ratio"])
 day["Model"] = "Dems + Poverty (Day)"
 
 night = pd.read_csv(
-    data_path
-    / "output"
-    / "selection_ratio_county_2017-2019_grouped_bootstraps_1000_poverty_night.csv",
+    data_path.parent
+    / "turing_output"
+    / "selection_ratio_county_2017-2019_grouped_bootstraps_1000_poverty_night_simple.csv",
     dtype={"FIPS": str},
     usecols=["FIPS", "selection_ratio", "white_incidents", "black_incidents"],
 )
@@ -173,7 +247,7 @@ data = pd.concat([day, night], ignore_index=True)
 data["diff"] = data["selection_ratio"] - data["selection_ratio_base"]
 sns.set_style("whitegrid")
 
-ax = sns.histplot(
+ax = sns.kdeplot(
     data=data,
     x="diff",
     hue="Model",
@@ -184,11 +258,92 @@ ax = sns.histplot(
 )
 ax.set_xlim([-2, 2])
 
-ax.set_xlabel("Selection Ratio X Model - Selection Ratio Poverty Model")
+ax.set_ylabel("")
+ax.set_xlabel(
+    "Log(enforcement ratio) - Log(enforcement ratio Usage\\textsubscript{Dmg+Pov})"
+)
 
 plt.show()
 # %%
 
+poverty = pd.read_csv(
+    data_path
+    / "output"
+    / "selection_ratio_county_2017-2019_grouped_bootstraps_1000.csv",
+    dtype={"FIPS": str},
+    usecols=["FIPS", "selection_ratio"],
+)
+poverty["selection_ratio"] = np.log(poverty["selection_ratio"])
+poverty["Model"] = "Dems + Poverty"
+
+poverty = poverty.rename(
+    columns={
+        "selection_ratio": "selection_ratio_base",
+        "Model": "Model_base",
+    }
+)
+
+day = pd.read_csv(
+    data_path.parent
+    / "turing_output"
+    / "selection_ratio_county_2017-2019_grouped_bootstraps_1000_poverty_day_daylight.csv",
+    dtype={"FIPS": str},
+    usecols=["FIPS", "selection_ratio", "white_incidents", "black_incidents"],
+)
+day["selection_ratio"] = np.log(day["selection_ratio"])
+day["Model"] = "Dawn\\textrightarrow Dusk"
+
+night = pd.read_csv(
+    data_path.parent
+    / "turing_output"
+    / "selection_ratio_county_2017-2019_grouped_bootstraps_1000_poverty_night_daylight.csv",
+    dtype={"FIPS": str},
+    usecols=["FIPS", "selection_ratio", "white_incidents", "black_incidents"],
+)
+night["selection_ratio"] = np.log(night["selection_ratio"])
+night["Model"] = "Dusk\\textrightarrow Dawn"
+
+day = poverty.merge(day, on="FIPS")
+night = poverty.merge(night, on="FIPS")
+
+day = day[day.FIPS.isin(night.FIPS)]
+night = night[night.FIPS.isin(day.FIPS)]
+
+data = pd.concat([day, night], ignore_index=True)
+
+
+data["diff"] = data["selection_ratio"] - data["selection_ratio_base"]
+sns.set_style("whitegrid")
+
+ax = sns.kdeplot(
+    data=data,
+    x="diff",
+    hue="Model",
+    fill=True,
+    palette="colorblind",
+    alpha=0.5,
+    linewidth=0,
+)
+ax.set_xlim([-2, 2])
+
+ax.set_ylabel("")
+ax.set_xlabel(
+    "Log(enforcement ratio) - Log(enforcement ratio Usage\\textsubscript{Dmg+Pov})"
+)
+
+plt.show()
+
+# ax = sns.histplot(
+#     data=data,
+#     x="diff",
+#     hue="Model",
+#     fill=True,
+#     palette="colorblind",
+#     alpha=0.5,
+#     linewidth=0,
+# )
+
+# %%
 
 plt.scatter(x=np.log(day.selection_ratio), y=np.log(night.selection_ratio))
 plt.plot(np.linspace(-3, 10), np.linspace(-3, 10))
@@ -260,7 +415,7 @@ day_all = pd.read_csv(
     usecols=["FIPS", "selection_ratio", "white_incidents", "black_incidents"],
 )
 day_all["selection_ratio"] = np.log(day["selection_ratio"])
-day_all["Model"] = "Dems + Poverty (Day)"
+day_all["Model"] = "Dems + Poverty (Dawn)"
 
 night_all = pd.read_csv(
     data_path
@@ -270,7 +425,7 @@ night_all = pd.read_csv(
     usecols=["FIPS", "selection_ratio", "white_incidents", "black_incidents"],
 )
 night_all["selection_ratio"] = np.log(night["selection_ratio"])
-night_all["Model"] = "Dems + Poverty (Night)"
+night_all["Model"] = "Dems + Poverty (Dusk)"
 
 day_all = poverty.merge(day, on="FIPS")
 night_all = poverty.merge(night, on="FIPS")

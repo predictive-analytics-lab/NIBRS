@@ -88,6 +88,16 @@ metro_using = pd.read_csv(
     usecols=["FIPS", "selection_ratio", "var_log"],
 )
 
+arrests = pd.read_csv(
+    data_path.parent
+    / "output"
+    / "selection_ratio_county_2017-2019_grouped_bootstraps_1000_poverty_arrests.csv",
+    dtype={"FIPS": str},
+    usecols=["FIPS", "selection_ratio", "var_log"],
+)
+
+arrests["selection_ratio_log_arrests"] = np.log(arrests["selection_ratio"])
+arrests["var_log_arrests"] = arrests["var_log"]
 
 poverty_using["selection_ratio_log_poverty"] = np.log(poverty_using["selection_ratio"])
 poverty_using["var_log_poverty"] = poverty_using["var_log"]
@@ -113,6 +123,8 @@ metro_using["var_log_metro"] = metro_using["var_log"]
 
 poverty_using = poverty_using.drop(columns=["selection_ratio", "var_log"])
 poverty_buying = poverty_buying.drop(columns=["selection_ratio", "var_log"])
+arrests = arrests.drop(columns=["selection_ratio", "var_log"])
+
 poverty_buying_outside = poverty_buying_outside.drop(
     columns=["selection_ratio", "var_log"]
 )
@@ -124,6 +136,7 @@ df = df.merge(poverty_buying, on="FIPS")
 df = df.merge(poverty_buying_outside, on="FIPS")
 df = df.merge(dem_only_using, on="FIPS")
 df = df.merge(metro_using, on="FIPS")
+df = df.merge(arrests, on="FIPS")
 
 election = pd.read_csv(
     data_path.parent / "misc" / "election_results_x_county.csv",
@@ -151,7 +164,7 @@ dfs = [
     poverty_buying,
     poverty_buying_outside,
 ]
-names = ["dem_only", "poverty", "metro", "buying", "buying_outside"]
+names = ["dem_only", "poverty", "metro", "buying", "buying_outside", "arrests"]
 
 results = []
 
@@ -189,7 +202,7 @@ for name in names:
         # g.ax_joint.set_xlabel(col)
         # plt.title(f"{name} {col}")
         # plt.show()
-        result = f"{coef:.3f} ({std_error:.6f})"
+        result = f"{coef:.3f} ({std_error:.4f})"
         if pvalue <= 0.05:
             result += "*"
         if pvalue <= 0.01:
@@ -254,7 +267,14 @@ correlate_names = [
     "Census Response rate",
 ]
 
-model_names = ["Dem only", "Dem + Pov", "Dem + metro", "Buying", "Buying Outside"]
+model_names = [
+    "Dem only",
+    "Dem + Pov",
+    "Dem + metro",
+    "Buying",
+    "Buying Outside",
+    "Arrests",
+]
 
 
 name_conv = {k: v for k, v in zip(correlate_order, correlate_names)}
@@ -316,7 +336,7 @@ def filter_legal(df: pd.DataFrame, legal: bool = False):
 
 
 def get_year_data(name: str, log_ratio: bool, legal: bool, reported: bool):
-    filename = "selection_ratio_county_2012-2019_bootstraps_1000"
+    filename = "selection_ratio_county_2010-2019_bootstraps_1000"
     if name == "Dem only":
         filename += ".csv"
     if name == "Dem + Pov":
@@ -327,7 +347,9 @@ def get_year_data(name: str, log_ratio: bool, legal: bool, reported: bool):
         filename += "_poverty_buying.csv"
     if name == "Buying Outside":
         filename += "_poverty_buying_outside.csv"
-    df = pd.read_csv(data_path.parent / "output" / filename, dtype={"FIPS": str})
+    if name == "Arrests":
+        filename += "_poverty_arrests.csv"
+    df = pd.read_csv(data_path.parent.parent / "turing_output" / filename, dtype={"FIPS": str})
     if legal:
         df = filter_legal(df, legal=True)
     else:
@@ -347,7 +369,7 @@ def get_year_data(name: str, log_ratio: bool, legal: bool, reported: bool):
     coef = model_res.params[1]
     pvalue = model_res.pvalues[1]
     std_error = model_res.HC1_se[1]
-    result = f"{coef:.3f} ({std_error:.6f})"
+    result = f"{coef:.3f} ({std_error:.4f})"
     if pvalue <= 0.05:
         result += "*"
     if pvalue <= 0.01:
