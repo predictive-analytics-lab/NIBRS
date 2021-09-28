@@ -286,7 +286,7 @@ def load_datasets(
             arrests=arrests,
             time=time,
             time_type=time_type,
-            hispanic=hispanics
+            hispanic=hispanics,
         )
     else:
         nibrs_df = get_ucr_data(years=years, target=target)
@@ -461,7 +461,7 @@ def main(
                 arrests,
                 time,
                 time_type,
-                hispanics
+                hispanics,
             )
         except FileNotFoundError:
             warnings.warn(f"Data missing for {yi}. Skipping.")
@@ -495,7 +495,6 @@ def main(
             ucr=ucr,
         )
         incident_users_df = incident_users_df.fillna(0)
-        breakpoint()
 
         if ci == "none":
             temp_df = selection_ratio(incident_users_df, wilson=False)
@@ -538,6 +537,10 @@ def main(
 
     if all_incidents:
         filename += "_all_incidents"
+        
+
+    if hispanics:
+        filename += "_hispanics"
 
     if urban_filter != 2:
         filename += f"_urban_filter_{urban_filter}"
