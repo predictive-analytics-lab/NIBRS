@@ -255,19 +255,24 @@ sr <- vroom(here("data", "output", "selection_ratio_county_2010-2019_bootstraps_
 sr_arrest <- vroom(here("data", "output", "selection_ratio_county_2010-2019_bootstraps_1000_poverty_arrests.csv")) %>%
   distinct(arrests, FIPS, year)
 sr <- sr %>% inner_join(sr_arrest)
-
-# sr <- sr %>%
-#   mutate(selection_ratio = ifelse(is.infinite(selection_ratio), NA, selection_ratio))
+nibrs <- vroom(here('data', 'output', 'cannabis_2010-2019_allincidents_summary.csv')) %>%
+  filter(!other_offense) %>%
+  filter(other_criminal_act_count == 0) %>%
+  filter(cannabis_count > 0)
+lc <- vroom(here('data', 'output', 'LEAIC.tsv')) %>%
+  distinct(STATENAME, FIPS, ORI9) %>%
+  rename(state = STATENAME)
 
 #
 legalised <- tribble(
-  ~state_code, ~year_legal,
-  "08", 2012,
-  "25", 2016,
-  "26", 2018,
-  "41", 2014,
-  "50", 2013,
-  "53", 2012
+  ~state_code, ~year_legal, ~ month_legal, ~event,
+  "08", 2012, 12, 'legalized', # colorado
+  "25", 2016, 12, 'legalized', # ma
+  "26", 2018, 12, 'legalized', # mi
+  "41", 2015, 10, 'legalized',#  or 
+  "50", 2013, 6, 'decriminalized', # vt
+  "50", 2018, 6, 'legalized', # vt
+  "53", 2013, 12, 'legalized' # wa
 )
 
 # take the weighted average
@@ -275,58 +280,119 @@ total_n_counties <- sc %>%
   inner_join(legalised) %>%
   group_by(state_name) %>%
   summarise(total_n_counties = length(unique(FIPS)))
-tb_plot <- sr %>%
+#' tb_plot <- sr %>%
+#'   inner_join(sc) %>%
+#'   inner_join(legalised) %>%
+#'   mutate(year_shift = year - year_legal) %>%
+#'   group_by(FIPS) %>%
+#'   mutate(years_reporting = length(unique(year))) %>%
+#'   filter(years_reporting == 10) %>%
+#'   group_by(year, year_shift, state_name, year_legal) %>%
+#'   summarise(
+#'     median_log_selection_ratio = median(log(selection_ratio)),
+#'     mean_selection_ratio = mean(selection_ratio * frequency) / sum(frequency),
+#'     mean_log_selection_ratio = sum(log(selection_ratio) * frequency) / sum(frequency),
+#'     mean_log_selection_ratio_lb = mean_log_selection_ratio - 1.96 * sqrt(1/sum(rel_err)^2 * sum(rel_err^2 * var_log)),
+#'     mean_log_selection_ratio_ub = mean_log_selection_ratio + 1.96 * sqrt(1/sum(rel_err)^2 * sum(rel_err^2 * var_log)),
+#'     #mean_log_selection_ratio_lb = mean_log_selection_ratio - 1.96 * sqrt(1/sum(frequency)^2 * sum(frequency^2 * var_log)),
+#'     #mean_log_selection_ratio_ub = mean_log_selection_ratio + 1.96 * sqrt(1/sum(frequency)^2 * sum(frequency^2 * var_log)),
+#'     incidents = sum(incidents),
+#'     log_incidents_per100k = log(sum(incidents) / sum(frequency) * 1e5),
+#'    # log_arrests_per100k = log(sum(arrests) / sum(frequency) * 1e5),
+#'     n_counties = length(unique(FIPS))
+#'   ) %>%
+#'   inner_join(total_n_counties) %>%
+#'   ungroup %>%
+#'   # compute n of counties for each state (must be stable across years)
+#'   mutate(state_name = glue('{state_name} ({n_counties}/{total_n_counties} counties)')) %>%
+#'   pivot_longer(cols = c('log_incidents_per100k', 
+#'                         #'log_arrests_per100k',
+#'                         'mean_log_selection_ratio'),
+#'                names_to = 'Variable', values_to = 'value')
+#'                
+sr_selected_counties <- sr %>%
   inner_join(sc) %>%
-  inner_join(legalised) %>%
-  mutate(year_shift = year - year_legal) %>%
+  #inner_join(legalised) %>%
+  #mutate(year_shift = year - year_legal) %>%
   group_by(FIPS) %>%
   mutate(years_reporting = length(unique(year))) %>%
-  filter(years_reporting == 10) %>%
-  group_by(year, year_shift, state_name, year_legal) %>%
+  filter(years_reporting == 10)
+tb_plot_sr <- sr_selected_counties %>%
+  group_by(year, state_name) %>%
   summarise(
-    median_log_selection_ratio = median(log(selection_ratio)),
-    mean_selection_ratio = mean(selection_ratio * frequency) / sum(frequency),
     mean_log_selection_ratio = sum(log(selection_ratio) * frequency) / sum(frequency),
     mean_log_selection_ratio_lb = mean_log_selection_ratio - 1.96 * sqrt(1/sum(rel_err)^2 * sum(rel_err^2 * var_log)),
     mean_log_selection_ratio_ub = mean_log_selection_ratio + 1.96 * sqrt(1/sum(rel_err)^2 * sum(rel_err^2 * var_log)),
-    #mean_log_selection_ratio_lb = mean_log_selection_ratio - 1.96 * sqrt(1/sum(frequency)^2 * sum(frequency^2 * var_log)),
-    #mean_log_selection_ratio_ub = mean_log_selection_ratio + 1.96 * sqrt(1/sum(frequency)^2 * sum(frequency^2 * var_log)),
-    incidents = sum(incidents),
-    log_incidents_per100k = log(sum(incidents) / sum(frequency) * 1e5),
-   # log_arrests_per100k = log(sum(arrests) / sum(frequency) * 1e5),
+    #incidents = sum(incidents),
+    #log_incidents_per100k = log(sum(incidents) / sum(frequency) * 1e5),
+    # log_arrests_per100k = log(sum(arrests) / sum(frequency) * 1e5),
     n_counties = length(unique(FIPS))
   ) %>%
   inner_join(total_n_counties) %>%
   ungroup %>%
   # compute n of counties for each state (must be stable across years)
-  mutate(state_name = glue('{state_name} ({n_counties}/{total_n_counties} counties)')) %>%
-  pivot_longer(cols = c('log_incidents_per100k', 
-                        #'log_arrests_per100k',
-                        'mean_log_selection_ratio'),
-               names_to = 'Variable', values_to = 'value')
+  mutate(state_name_wc = glue('{state_name} ({n_counties}/{total_n_counties} counties)')) %>%
+  mutate(month_num = 6)
 
+
+nibrs <- nibrs %>%
+  inner_join(lc, by = c('ori' = 'ORI9'))
+
+incidents_by_month <- nibrs %>%
+  inner_join(sr_selected_counties %>% distinct(FIPS)) %>% # only counties that have always reported
+  rename(year = data_year) %>%
+  group_by(year, FIPS, month_num) %>%
+  summarise(incidents = n()) %>%
+  inner_join(sc) %>%
+  inner_join(sr %>% distinct(year, FIPS, frequency)) %>%
+  group_by(year, state_name, month_num) %>%
+  summarise(log_incidents_per100k = log(sum(incidents) / sum(frequency) * 1e5)) %>%
+  inner_join(tb_plot_sr %>% distinct(state_name, state_name_wc))
+incidents_by_month
+
+glimpse(incidents_by_month)
+glimpse(tb_plot_sr)
+incidents_by_month
+tb_plot <- tb_plot_sr %>%
+  rename(value = mean_log_selection_ratio) %>%
+  mutate(variable = 'mean_log_selection_ratio') %>%
+  bind_rows(incidents_by_month %>%
+              rename(value = log_incidents_per100k) %>%
+              mutate(variable = 'log_incidents_per100k')) %>%
+  mutate(year_month = as.character(glue('{month_num}/01/{year}'))) %>%
+  mutate(date = as.Date(year_month, format = '%m/%d/%Y'))
+
+legalised <- legalised %>%
+  mutate(date = as.Date(glue('{month_legal}/01/{year_legal}'), format = '%m/%d/%Y')) %>%
+  inner_join(sc %>% distinct(state_name, state_code)) %>%
+  inner_join(tb_plot_sr %>% distinct(state_name, state_name_wc))
 
 tb_plot %>%
-  #filter(Variable == 'mean_selection_ratio') %>%
   # plot
-  mutate(Variable = case_when(
-    Variable == 'log_incidents_per100k' ~ 'Log incidents per 100,000 people',
-    Variable == 'mean_log_selection_ratio' ~ "Mean of log selection ratio weighted by the\ninverse of the relative standard deviation"
+  mutate(variable = case_when(
+    variable == 'log_incidents_per100k' ~ 'Log of monthly incidents per 100,000 people',
+    variable == 'mean_log_selection_ratio' ~ "Mean of log selection ratio weighted by the\ninverse of the relative standard deviation"
   )) %>%
-  ggplot(aes(x = year, y = value, col = Variable)) +
+  ggplot(aes(x = date, y = value, col = variable)) +
   geom_line() +
   theme_bw() +
   geom_ribbon(aes(ymin = mean_log_selection_ratio_lb, ymax = mean_log_selection_ratio_ub), 
               fill = 'blue', alpha = 0.1, show.legend = FALSE,
               colour = NA) + 
   xlab("Year") +
-  geom_vline(aes(xintercept = year_legal), linetype = "dashed", alpha = 0.5) +
+  geom_vline(data = legalised, aes(xintercept = date, col = event), linetype = "dashed", alpha = 0.5) +
   ylab("Mean log selection ratio") +
   facet_wrap(~state_name, ncol = 2) + 
   scale_x_continuous(breaks = seq(2010, 2018, by = 2)) + 
-  scale_color_manual(values = c("#D55E00", "#0072B2")) + 
+  scale_color_manual(values = c("#D55E00", "#0072B2", 'forestgreen', 'darkred')) + 
   ylab('Value') + 
-  theme(legend.position="bottom", legend.title = element_blank())
+  theme(legend.position="bottom", legend.title = element_blank(), 
+        legend.box="vertical") +
+  scale_x_date(date_breaks = '2 years', 
+               date_minor_breaks = '1 year',
+               #labels = seq(2011, 2019, by = 2),
+               date_labels = "%Y") + 
+  guides(color = guide_legend(nrow = 2, byrow = TRUE))
 ggsave(here("scripts", "R", "plots", "sr_by_year_legalized.pdf"), height = 8, width = 6.5)
 
 

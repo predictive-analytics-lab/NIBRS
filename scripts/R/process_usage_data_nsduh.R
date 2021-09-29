@@ -75,7 +75,7 @@ if(length(years_to_download)>0){
 
 # merge all data files
 
-df_list <- years %>% map(~ vroom(here('scripts', 'R', 'downloaded_data',
+df_list <- years %>% purrr::map(~ vroom(here('scripts', 'R', 'downloaded_data',
                            glue('nsduh_{.x}'), glue('NSDUH_{.x}_Tab.{if(.x==2019){"txt"}else{"tsv"}}')),
                            col_types = cols()) %>%
                            mutate(VEREP = as.character(VEREP)))
@@ -135,6 +135,9 @@ cols_to_keep <- c(
                   # "DRVINALCO2",
                   # "DRVINMARJ2",
                   # "DRVINMDRG",
+                  
+                  "ALCPDANG", # drunkness
+                  "ALCSERPB",
                   
                   "VEREP",
                   "VESTR" # stratum
@@ -213,6 +216,11 @@ df <- df %>%
     days_traded_marijuana_outside = case_when(
       MMT30FRQ >= 1 & MMT30FRQ <= 30 & MMBPLACE != 4 ~ MMBT30DY,
       MMT30FRQ == 91 | MMT30FRQ == 93 | MMT30FRQ == 99 ~ 0
+    ),
+    drunk_past_year = case_when(
+      ALCPDANG == 1 | ALCSERPB == 1~ 1,
+      ALCPDANG == 2 | ALCSERPB == 2 ~ 0,
+      ALCPDANG == 91 | ALCPDANG == 83 | ALCPDANG == 93 | ALCSERPB == 83 | ALCSERPB == 91 | ALCSERPB == 93 ~ 0
     ),
     dui_past_year = case_when(
       DRVINALCO2 == 1 | 
@@ -294,6 +302,7 @@ stats_df <- df_srv %>%
                                     na.rm = TRUE),
      mean_traded_outside_day = survey_mean(days_traded_marijuana_outside/30,
                                             na.rm = TRUE),
+     perc_drunk_past_year = survey_mean(drunk_past_year, na.rm = TRUE),
      dui_past_year = survey_mean(dui_past_year, na.rm = TRUE)
    )
 
@@ -305,292 +314,292 @@ stats_df %>%
 
 
 # generate summary stats for table ----
-
-df4stats <- df %>%
-  filter(race != 'other') %>%
-  mutate(
-    MMGETMJ_label = case_when(
-      MMGETMJ == 1 ~ 'Bought it',
-      MMGETMJ == 2 ~ 'Traded for it',
-      MMGETMJ == 3 ~ 'Got it for free',
-      MMGETMJ == 4 ~ 'Grew it',
-      MMGETMJ == 91 ~ 'Never used',
-      MMGETMJ == 93 ~ 'Not used in past year'
-    ),
-    buying_frequency = case_when(
-      MMBT30DY >= 1 & MMBT30DY <= 30 ~ MMBT30DY,
-      MMBT30DY == 91 | MMBT30DY == 93 |  MMBT30DY == 99 ~ 0,
-    ),
-    how_much_marijuana_last_time = case_when(
-      MMLSGMS == 1 | MMLSGMS == 2 | MMLSOZS == 1 | MMLSOZS ==2 ~ '<10 grams',
-      MMLSGMS == 3 | MMLSOZS == 3 | MMLSOZS == 4 | MMLSOZS == 5 | MMLSOZS == 6 | MMLSOZS == 7 ~ '>10 grams',
-      MMLSGMS == 91 | MMLSGMS == 99 | MMLSGMS == 93 | MMLSOZS == 91 | MMLSOZS == 93 | MMLSOZS == 99 ~ 'Not used/skip'),
-    how_much_paid = case_when(
-      MMLSPCTB <= 3 ~ '<20$',
-      MMLSPCTB <= 4 ~ '21-50$',
-      MMLSPCTB <= 5 ~ '51-100$',
-      MMLSPCTB > 5 & MMLSPCTB <= 12 ~ '>100$',
-      MMLSPCTB == 91 |  MMLSPCTB == 93 ~ 'Not used/skip'),
-    who_sold_you_marijuana_last_time = case_when(
-      MMBUYWHO == 1 ~ 'Friend',
-      MMBUYWHO == 2 ~ 'Relative',
-      MMBUYWHO == 3 ~ 'Stranger',
-      MMBUYWHO == 91 | MMBUYWHO == 93 | MMBUYWHO == 99 ~ 'Not used/skip'
-    ),
-    where_did_you_buy = case_when(
-      MMBPLACE == 1 | MMBPLACE == 11~ 'Inside public building',
-      MMBPLACE == 2 | MMBPLACE == 3 | MMBPLACE == 13 ~ 'At school',
-      MMBPLACE == 4 | MMBPLACE == 14 ~ 'Inside a house',
-      MMBPLACE == 5 | MMBPLACE == 15 ~ 'Outside in public area',
-      MMBPLACE == 6 ~ 'Other',
-      MMBPLACE == 91 | MMBPLACE == 93 | MMBPLACE == 99 ~ 'Not used/skip'),
-    how_near_were_you_when_bought_marijuana_last_time = case_when(
-      MMBCLOSE == 1 ~ 'Near home',
-      MMBCLOSE == 2 ~ 'Somewhere else',
-      MMBCLOSE == 91 | MMBCLOSE == 93 | MMBCLOSE == 99 ~ 'Not used/skip'
-    )
-    )
-
-df4stats %>% group_by(year) %>% summarise(mean(is.na(MMGETMJ_label)))
-df4stats %>% group_by(year) %>% summarise(mean(is.na(buying_frequency)))
-df4stats %>% group_by(year) %>% summarise(mean(is.na(how_much_marijuana_last_time)))
-df4stats %>% group_by(year) %>% summarise(mean(is.na(how_much_paid)))
-df4stats %>% group_by(year) %>% summarise(mean(is.na(how_near_were_you_when_bought_marijuana_last_time)))
-
-get_how_get_marijuana <- function(grouping=FALSE, df4stats_srv){
-  #browser()
-  if(grouping){
-    to_group <- c(grouping, 'MMGETMJ_label')
-  } else{
-    to_group <- 'MMGETMJ_label'
-  }
-  how_get_last_marijuana_used <- df4stats_srv %>%
-    filter(!(year %in% c(2015, 2016, 2017))) %>%
-    filter(MMGETMJ_label != 'Never used' & MMGETMJ_label != 'Not used in past year') %>%
-    group_by(across(all_of(to_group))) %>%
-    summarise(
-      value = survey_mean()
-    ) %>%
-    #filter(MMGETMJ_label != 'Never used' & MMGETMJ_label != 'Not used in past year') %>%
-    mutate(value = glue('{round(value,2) * 100}% ({round(value_se,2)*100})'))
-  #how_get_last_marijuana_used %>% select(-value_se) %>%
-  #  pivot_wider(names_from = race, values_from = value)
-  how_get_last_marijuana_used %>%
-    select(MMGETMJ_label, value) %>%
-    rename(term = MMGETMJ_label)
-}
-
-get_buying_frequency <- function(df4stats_srv){
-
-  # among those that actually do buy
-  buy <- df4stats_srv %>%
-    filter(!(year %in% c(2015, 2016, 2017))) %>%
-    filter(buying_frequency > 0 & !is.na(buying_frequency)) %>%
-    summarise(
-      value = survey_mean(buying_frequency)
-    ) %>%
-    mutate(value = glue('{value %>% round()} ({value_se %>% round(.)})'),
-           value_se = glue('{value_se %>% round(.)}'))
-  perc_buyers <- df4stats_srv %>%
-    filter(!(year %in% c(2015, 2016, 2017))) %>%
-    summarise(
-      value = survey_mean(buying_frequency>0, na.rm = TRUE)
-    ) %>%
-    mutate(value = glue('{value %>% round(.,2) * 100}% ({round(value_se, 2) * 100})'),
-           value_se = glue('{value_se %>% round(.,2) * 100}%'))
-  buy %>%
-    mutate(term = "Mean number of days among buyers") %>%
-    bind_rows(
-      perc_buyers %>% mutate(term = "% buyers")
-    )
-}
-
-get_how_much_marijuana_last_time <- function(df4stats_srv){
-  df4stats_srv %>%
-    filter(!(year %in% c(2015, 2016, 2017))) %>%
-    filter(how_much_marijuana_last_time != 'Not used/skip') %>%
-    group_by(how_much_marijuana_last_time) %>%
-    summarise(
-      value = survey_mean()
-    ) %>%
-    # filter(how_much_marijuana_last_time != 'Not used/skip') %>%
-    mutate(value = glue('{value %>% round(.,2) * 100}% ({round(value_se,2) * 100})'),
-           value_se = glue('{value_se %>% round(.,2) * 100}%')) %>%
-    rename(term = how_much_marijuana_last_time)
-}
-
-
-get_how_much_paid_last_time <- function(df4stats_srv){
-  stats <- df4stats_srv %>%
-    filter(!(year %in% c(2015, 2016, 2017))) %>%
-    filter(how_much_paid != 'Not used/skip')  %>%
-    group_by(how_much_paid) %>%
-    summarise(
-      value = survey_mean()
-    ) %>%
-    mutate(value = glue('{value %>% round(.,2) * 100}% ({round(value_se,2) * 100})'),
-           value_se = glue('{value_se %>% round(.,2) * 100}%')) %>%
-    rename(term = how_much_paid)
-  stats[c(1,3,4,2),]
-}
-
-get_who_sold_you_marijuana_last_time <- function(df4stats_srv){
-  df4stats_srv %>%
-    filter(!(year %in% c(2015, 2016, 2017))) %>%
-    filter(who_sold_you_marijuana_last_time != 'Not used/skip')  %>%
-    group_by(who_sold_you_marijuana_last_time) %>%
-    summarise(
-      value = survey_mean()
-    ) %>%
-    #filter(who_sold_you_marijuana_last_time != 'Not used/skip')  %>%
-    mutate(value = glue('{value %>% round(.,2) * 100}% ({round(value_se, 2)*100})'),
-           value_se = glue('{round(value_se,2) * 100}%')) %>%
-    rename(term = who_sold_you_marijuana_last_time)
-}
-
-get_where_did_you_buy <- function(df4stats_srv){
-  df4stats_srv %>%
-    filter(!(year %in% c(2015, 2016, 2017))) %>%
-    filter(where_did_you_buy != 'Not used/skip')  %>%
-    group_by(where_did_you_buy) %>%
-    summarise(
-      value = survey_mean()
-    ) %>%
-    #filter(where_did_you_buy != 'Not used/skip')  %>%
-    mutate(value = glue('{value %>% round(.,2) * 100}% ({value_se %>% round(.,2) * 100})'),
-           value_se = glue('{value_se %>% round(.,2) * 100}%')) %>%
-    rename(term = where_did_you_buy)
-}
-
-get_how_near_were_you_when_bought_marijuana_last_time <- function(df4stats_srv){
-  df4stats_srv %>%
-    filter(!(year %in% c(2015, 2016, 2017))) %>%
-    filter(how_near_were_you_when_bought_marijuana_last_time != 'Not used/skip') %>%
-    group_by(how_near_were_you_when_bought_marijuana_last_time) %>%
-    summarise(
-      value = survey_mean()
-    ) %>%
-    mutate(value = glue('{value %>% round(.,2) * 100}% ({value_se %>% round(.,2) * 100})'),
-           value_se = glue('{value_se %>% round(.,2) * 100}%')) %>%
-    #filter(how_near_were_you_when_bought_marijuana_last_time != 'Not used/skip') %>%
-    rename(term = how_near_were_you_when_bought_marijuana_last_time)
-}
-
-
-df4stats_srv <- df4stats %>%
-  as_survey_design(strata = VESTR, weights = ANALWT_C)
-df4stats_list <- list(
-  df4stats_srv %>% filter(race == 'black' & is_metro == 'metro'),
-  df4stats_srv %>% filter(race == 'black' & sex == 'male' & age == '18-25' & is_metro == 'metro'),
-  df4stats_srv %>% filter(race == 'white' & is_metro == 'metro'),
-  df4stats_srv %>% filter(race == 'white' & sex == 'male' & age == '18-25' & is_metro == 'metro'),
-  df4stats_srv %>% filter(race == 'black' & is_metro == 'nonmetro'),
-  df4stats_srv %>% filter(race == 'black' & sex == 'male' & age == '18-25' & is_metro == 'nonmetro'),
-  df4stats_srv %>% filter(race == 'white' & is_metro == 'nonmetro'),
-  df4stats_srv %>% filter(race == 'white' & sex == 'male' & age == '18-25' & is_metro == 'nonmetro')
-)
-
-##
-tables_stats <- list(
-  "How did you get marijuana?" = df4stats_list %>%
-  map(~ get_how_get_marijuana(FALSE, .x)) %>%
-  reduce(left_join, by = 'term'),
-
-  "How often did you buy it?" = df4stats_list %>%
-    map(~ get_buying_frequency(.x) %>%
-          select(term, value)) %>%
-    reduce(left_join, by = 'term'),
-
-  "How much marijuana did you get last time?" = df4stats_list %>%
-    map(~ get_how_much_marijuana_last_time(.x) %>%
-          select(term, value)) %>%
-    reduce(left_join, by = 'term'),
-
-   "How much did you for marijuana last time?" = df4stats_list %>%
-    map(~ get_how_much_paid_last_time(.x) %>%
-          select(term, value)) %>%
-    reduce(left_join, by = 'term'),
-
-  "Who sold you marijuana last time?" = df4stats_list %>%
-    map(~ get_who_sold_you_marijuana_last_time(.x) %>%
-          select(term, value)) %>%
-    reduce(left_join, by = 'term'),
-
-  "Where did you buy marijuana last time?" = df4stats_list %>%
-    map(~ get_where_did_you_buy(.x) %>%
-          select(term, value)) %>%
-    reduce(left_join, by = 'term'),
-
-  "How near you when you bought marijuana last time?" = df4stats_list %>%
-    map(~ get_how_near_were_you_when_bought_marijuana_last_time(.x) %>%
-          select(term, value)) %>%
-    reduce(left_join, by = 'term')
-)
-
-print(tables_stats %>%
-  bind_rows(.id = 'variable') %>%
-  xtable(.,
-         align = rep('c', 11)),
-  include.rownames=FALSE)
-
-
-
-
-## poverty
-
-df4stats_srv <- df4stats %>%
-  as_survey_design(strata = VESTR, weights = ANALWT_C)
-df4stats_list <- list(
-  df4stats_srv %>% filter(race == 'black' & poverty_level == 'income higher than poverty threshold'),
-  df4stats_srv %>% filter(race == 'black' & sex == 'male' & age == '18-25' & poverty_level == 'income higher than poverty threshold'),
-  df4stats_srv %>% filter(race == 'white' & poverty_level == 'income higher than poverty threshold'),
-  df4stats_srv %>% filter(race == 'white' & sex == 'male' & age == '18-25' & poverty_level == 'income higher than poverty threshold'),
-  df4stats_srv %>% filter(race == 'black' & poverty_level == 'living in poverty'),
-  df4stats_srv %>% filter(race == 'black' & sex == 'male' & age == '18-25' & poverty_level == 'living in poverty'),
-  df4stats_srv %>% filter(race == 'white' & poverty_level == 'living in poverty'),
-  df4stats_srv %>% filter(race == 'white' & sex == 'male' & age == '18-25' & poverty_level == 'living in poverty')
-)
-
-##
-tables_stats <- list(
-  "How did you get marijuana?" = df4stats_list %>%
-    map(~ get_how_get_marijuana(FALSE, .x)) %>%
-    reduce(left_join, by = 'term'),
-
-  "How often did you buy it?" = df4stats_list %>%
-    map(~ get_buying_frequency(.x) %>%
-          select(term, value)) %>%
-    reduce(left_join, by = 'term'),
-
-  "How much marijuana did you get last time?" = df4stats_list %>%
-    map(~ get_how_much_marijuana_last_time(.x) %>%
-          select(term, value)) %>%
-    reduce(left_join, by = 'term'),
-
-  "How much did you for marijuana last time?" = df4stats_list %>%
-    map(~ get_how_much_paid_last_time(.x) %>%
-          select(term, value)) %>%
-    reduce(left_join, by = 'term'),
-
-  "Who sold you marijuana last time?" = df4stats_list %>%
-    map(~ get_who_sold_you_marijuana_last_time(.x) %>%
-          select(term, value)) %>%
-    reduce(left_join, by = 'term'),
-
-  "Where did you buy marijuana last time?" = df4stats_list %>%
-    map(~ get_where_did_you_buy(.x) %>%
-          select(term, value)) %>%
-    reduce(left_join, by = 'term'),
-
-  "How near you when you bought marijuana last time?" = df4stats_list %>%
-    map(~ get_how_near_were_you_when_bought_marijuana_last_time(.x) %>%
-          select(term, value)) %>%
-    reduce(left_join, by = 'term')
-)
-
-print(tables_stats %>%
-        bind_rows(.id = 'variable') %>%
-        xtable(.,
-               align = rep('c', 11)),
-      include.rownames=FALSE)
-
+# 
+# df4stats <- df %>%
+#   filter(race != 'other') %>%
+#   mutate(
+#     MMGETMJ_label = case_when(
+#       MMGETMJ == 1 ~ 'Bought it',
+#       MMGETMJ == 2 ~ 'Traded for it',
+#       MMGETMJ == 3 ~ 'Got it for free',
+#       MMGETMJ == 4 ~ 'Grew it',
+#       MMGETMJ == 91 ~ 'Never used',
+#       MMGETMJ == 93 ~ 'Not used in past year'
+#     ),
+#     buying_frequency = case_when(
+#       MMBT30DY >= 1 & MMBT30DY <= 30 ~ MMBT30DY,
+#       MMBT30DY == 91 | MMBT30DY == 93 |  MMBT30DY == 99 ~ 0,
+#     ),
+#     how_much_marijuana_last_time = case_when(
+#       MMLSGMS == 1 | MMLSGMS == 2 | MMLSOZS == 1 | MMLSOZS ==2 ~ '<10 grams',
+#       MMLSGMS == 3 | MMLSOZS == 3 | MMLSOZS == 4 | MMLSOZS == 5 | MMLSOZS == 6 | MMLSOZS == 7 ~ '>10 grams',
+#       MMLSGMS == 91 | MMLSGMS == 99 | MMLSGMS == 93 | MMLSOZS == 91 | MMLSOZS == 93 | MMLSOZS == 99 ~ 'Not used/skip'),
+#     how_much_paid = case_when(
+#       MMLSPCTB <= 3 ~ '<20$',
+#       MMLSPCTB <= 4 ~ '21-50$',
+#       MMLSPCTB <= 5 ~ '51-100$',
+#       MMLSPCTB > 5 & MMLSPCTB <= 12 ~ '>100$',
+#       MMLSPCTB == 91 |  MMLSPCTB == 93 ~ 'Not used/skip'),
+#     who_sold_you_marijuana_last_time = case_when(
+#       MMBUYWHO == 1 ~ 'Friend',
+#       MMBUYWHO == 2 ~ 'Relative',
+#       MMBUYWHO == 3 ~ 'Stranger',
+#       MMBUYWHO == 91 | MMBUYWHO == 93 | MMBUYWHO == 99 ~ 'Not used/skip'
+#     ),
+#     where_did_you_buy = case_when(
+#       MMBPLACE == 1 | MMBPLACE == 11~ 'Inside public building',
+#       MMBPLACE == 2 | MMBPLACE == 3 | MMBPLACE == 13 ~ 'At school',
+#       MMBPLACE == 4 | MMBPLACE == 14 ~ 'Inside a house',
+#       MMBPLACE == 5 | MMBPLACE == 15 ~ 'Outside in public area',
+#       MMBPLACE == 6 ~ 'Other',
+#       MMBPLACE == 91 | MMBPLACE == 93 | MMBPLACE == 99 ~ 'Not used/skip'),
+#     how_near_were_you_when_bought_marijuana_last_time = case_when(
+#       MMBCLOSE == 1 ~ 'Near home',
+#       MMBCLOSE == 2 ~ 'Somewhere else',
+#       MMBCLOSE == 91 | MMBCLOSE == 93 | MMBCLOSE == 99 ~ 'Not used/skip'
+#     )
+#     )
+# 
+# df4stats %>% group_by(year) %>% summarise(mean(is.na(MMGETMJ_label)))
+# df4stats %>% group_by(year) %>% summarise(mean(is.na(buying_frequency)))
+# df4stats %>% group_by(year) %>% summarise(mean(is.na(how_much_marijuana_last_time)))
+# df4stats %>% group_by(year) %>% summarise(mean(is.na(how_much_paid)))
+# df4stats %>% group_by(year) %>% summarise(mean(is.na(how_near_were_you_when_bought_marijuana_last_time)))
+# 
+# get_how_get_marijuana <- function(grouping=FALSE, df4stats_srv){
+#   #browser()
+#   if(grouping){
+#     to_group <- c(grouping, 'MMGETMJ_label')
+#   } else{
+#     to_group <- 'MMGETMJ_label'
+#   }
+#   how_get_last_marijuana_used <- df4stats_srv %>%
+#     filter(!(year %in% c(2015, 2016, 2017))) %>%
+#     filter(MMGETMJ_label != 'Never used' & MMGETMJ_label != 'Not used in past year') %>%
+#     group_by(across(all_of(to_group))) %>%
+#     summarise(
+#       value = survey_mean()
+#     ) %>%
+#     #filter(MMGETMJ_label != 'Never used' & MMGETMJ_label != 'Not used in past year') %>%
+#     mutate(value = glue('{round(value,2) * 100}% ({round(value_se,2)*100})'))
+#   #how_get_last_marijuana_used %>% select(-value_se) %>%
+#   #  pivot_wider(names_from = race, values_from = value)
+#   how_get_last_marijuana_used %>%
+#     select(MMGETMJ_label, value) %>%
+#     rename(term = MMGETMJ_label)
+# }
+# 
+# get_buying_frequency <- function(df4stats_srv){
+# 
+#   # among those that actually do buy
+#   buy <- df4stats_srv %>%
+#     filter(!(year %in% c(2015, 2016, 2017))) %>%
+#     filter(buying_frequency > 0 & !is.na(buying_frequency)) %>%
+#     summarise(
+#       value = survey_mean(buying_frequency)
+#     ) %>%
+#     mutate(value = glue('{value %>% round()} ({value_se %>% round(.)})'),
+#            value_se = glue('{value_se %>% round(.)}'))
+#   perc_buyers <- df4stats_srv %>%
+#     filter(!(year %in% c(2015, 2016, 2017))) %>%
+#     summarise(
+#       value = survey_mean(buying_frequency>0, na.rm = TRUE)
+#     ) %>%
+#     mutate(value = glue('{value %>% round(.,2) * 100}% ({round(value_se, 2) * 100})'),
+#            value_se = glue('{value_se %>% round(.,2) * 100}%'))
+#   buy %>%
+#     mutate(term = "Mean number of days among buyers") %>%
+#     bind_rows(
+#       perc_buyers %>% mutate(term = "% buyers")
+#     )
+# }
+# 
+# get_how_much_marijuana_last_time <- function(df4stats_srv){
+#   df4stats_srv %>%
+#     filter(!(year %in% c(2015, 2016, 2017))) %>%
+#     filter(how_much_marijuana_last_time != 'Not used/skip') %>%
+#     group_by(how_much_marijuana_last_time) %>%
+#     summarise(
+#       value = survey_mean()
+#     ) %>%
+#     # filter(how_much_marijuana_last_time != 'Not used/skip') %>%
+#     mutate(value = glue('{value %>% round(.,2) * 100}% ({round(value_se,2) * 100})'),
+#            value_se = glue('{value_se %>% round(.,2) * 100}%')) %>%
+#     rename(term = how_much_marijuana_last_time)
+# }
+# 
+# 
+# get_how_much_paid_last_time <- function(df4stats_srv){
+#   stats <- df4stats_srv %>%
+#     filter(!(year %in% c(2015, 2016, 2017))) %>%
+#     filter(how_much_paid != 'Not used/skip')  %>%
+#     group_by(how_much_paid) %>%
+#     summarise(
+#       value = survey_mean()
+#     ) %>%
+#     mutate(value = glue('{value %>% round(.,2) * 100}% ({round(value_se,2) * 100})'),
+#            value_se = glue('{value_se %>% round(.,2) * 100}%')) %>%
+#     rename(term = how_much_paid)
+#   stats[c(1,3,4,2),]
+# }
+# 
+# get_who_sold_you_marijuana_last_time <- function(df4stats_srv){
+#   df4stats_srv %>%
+#     filter(!(year %in% c(2015, 2016, 2017))) %>%
+#     filter(who_sold_you_marijuana_last_time != 'Not used/skip')  %>%
+#     group_by(who_sold_you_marijuana_last_time) %>%
+#     summarise(
+#       value = survey_mean()
+#     ) %>%
+#     #filter(who_sold_you_marijuana_last_time != 'Not used/skip')  %>%
+#     mutate(value = glue('{value %>% round(.,2) * 100}% ({round(value_se, 2)*100})'),
+#            value_se = glue('{round(value_se,2) * 100}%')) %>%
+#     rename(term = who_sold_you_marijuana_last_time)
+# }
+# 
+# get_where_did_you_buy <- function(df4stats_srv){
+#   df4stats_srv %>%
+#     filter(!(year %in% c(2015, 2016, 2017))) %>%
+#     filter(where_did_you_buy != 'Not used/skip')  %>%
+#     group_by(where_did_you_buy) %>%
+#     summarise(
+#       value = survey_mean()
+#     ) %>%
+#     #filter(where_did_you_buy != 'Not used/skip')  %>%
+#     mutate(value = glue('{value %>% round(.,2) * 100}% ({value_se %>% round(.,2) * 100})'),
+#            value_se = glue('{value_se %>% round(.,2) * 100}%')) %>%
+#     rename(term = where_did_you_buy)
+# }
+# 
+# get_how_near_were_you_when_bought_marijuana_last_time <- function(df4stats_srv){
+#   df4stats_srv %>%
+#     filter(!(year %in% c(2015, 2016, 2017))) %>%
+#     filter(how_near_were_you_when_bought_marijuana_last_time != 'Not used/skip') %>%
+#     group_by(how_near_were_you_when_bought_marijuana_last_time) %>%
+#     summarise(
+#       value = survey_mean()
+#     ) %>%
+#     mutate(value = glue('{value %>% round(.,2) * 100}% ({value_se %>% round(.,2) * 100})'),
+#            value_se = glue('{value_se %>% round(.,2) * 100}%')) %>%
+#     #filter(how_near_were_you_when_bought_marijuana_last_time != 'Not used/skip') %>%
+#     rename(term = how_near_were_you_when_bought_marijuana_last_time)
+# }
+# 
+# 
+# df4stats_srv <- df4stats %>%
+#   as_survey_design(strata = VESTR, weights = ANALWT_C)
+# df4stats_list <- list(
+#   df4stats_srv %>% filter(race == 'black' & is_metro == 'metro'),
+#   df4stats_srv %>% filter(race == 'black' & sex == 'male' & age == '18-25' & is_metro == 'metro'),
+#   df4stats_srv %>% filter(race == 'white' & is_metro == 'metro'),
+#   df4stats_srv %>% filter(race == 'white' & sex == 'male' & age == '18-25' & is_metro == 'metro'),
+#   df4stats_srv %>% filter(race == 'black' & is_metro == 'nonmetro'),
+#   df4stats_srv %>% filter(race == 'black' & sex == 'male' & age == '18-25' & is_metro == 'nonmetro'),
+#   df4stats_srv %>% filter(race == 'white' & is_metro == 'nonmetro'),
+#   df4stats_srv %>% filter(race == 'white' & sex == 'male' & age == '18-25' & is_metro == 'nonmetro')
+# )
+# 
+# ##
+# tables_stats <- list(
+#   "How did you get marijuana?" = df4stats_list %>%
+#   map(~ get_how_get_marijuana(FALSE, .x)) %>%
+#   reduce(left_join, by = 'term'),
+# 
+#   "How often did you buy it?" = df4stats_list %>%
+#     map(~ get_buying_frequency(.x) %>%
+#           select(term, value)) %>%
+#     reduce(left_join, by = 'term'),
+# 
+#   "How much marijuana did you get last time?" = df4stats_list %>%
+#     map(~ get_how_much_marijuana_last_time(.x) %>%
+#           select(term, value)) %>%
+#     reduce(left_join, by = 'term'),
+# 
+#    "How much did you for marijuana last time?" = df4stats_list %>%
+#     map(~ get_how_much_paid_last_time(.x) %>%
+#           select(term, value)) %>%
+#     reduce(left_join, by = 'term'),
+# 
+#   "Who sold you marijuana last time?" = df4stats_list %>%
+#     map(~ get_who_sold_you_marijuana_last_time(.x) %>%
+#           select(term, value)) %>%
+#     reduce(left_join, by = 'term'),
+# 
+#   "Where did you buy marijuana last time?" = df4stats_list %>%
+#     map(~ get_where_did_you_buy(.x) %>%
+#           select(term, value)) %>%
+#     reduce(left_join, by = 'term'),
+# 
+#   "How near you when you bought marijuana last time?" = df4stats_list %>%
+#     map(~ get_how_near_were_you_when_bought_marijuana_last_time(.x) %>%
+#           select(term, value)) %>%
+#     reduce(left_join, by = 'term')
+# )
+# 
+# print(tables_stats %>%
+#   bind_rows(.id = 'variable') %>%
+#   xtable(.,
+#          align = rep('c', 11)),
+#   include.rownames=FALSE)
+# 
+# 
+# 
+# 
+# ## poverty
+# 
+# df4stats_srv <- df4stats %>%
+#   as_survey_design(strata = VESTR, weights = ANALWT_C)
+# df4stats_list <- list(
+#   df4stats_srv %>% filter(race == 'black' & poverty_level == 'income higher than poverty threshold'),
+#   df4stats_srv %>% filter(race == 'black' & sex == 'male' & age == '18-25' & poverty_level == 'income higher than poverty threshold'),
+#   df4stats_srv %>% filter(race == 'white' & poverty_level == 'income higher than poverty threshold'),
+#   df4stats_srv %>% filter(race == 'white' & sex == 'male' & age == '18-25' & poverty_level == 'income higher than poverty threshold'),
+#   df4stats_srv %>% filter(race == 'black' & poverty_level == 'living in poverty'),
+#   df4stats_srv %>% filter(race == 'black' & sex == 'male' & age == '18-25' & poverty_level == 'living in poverty'),
+#   df4stats_srv %>% filter(race == 'white' & poverty_level == 'living in poverty'),
+#   df4stats_srv %>% filter(race == 'white' & sex == 'male' & age == '18-25' & poverty_level == 'living in poverty')
+# )
+# 
+# ##
+# tables_stats <- list(
+#   "How did you get marijuana?" = df4stats_list %>%
+#     map(~ get_how_get_marijuana(FALSE, .x)) %>%
+#     reduce(left_join, by = 'term'),
+# 
+#   "How often did you buy it?" = df4stats_list %>%
+#     map(~ get_buying_frequency(.x) %>%
+#           select(term, value)) %>%
+#     reduce(left_join, by = 'term'),
+# 
+#   "How much marijuana did you get last time?" = df4stats_list %>%
+#     map(~ get_how_much_marijuana_last_time(.x) %>%
+#           select(term, value)) %>%
+#     reduce(left_join, by = 'term'),
+# 
+#   "How much did you for marijuana last time?" = df4stats_list %>%
+#     map(~ get_how_much_paid_last_time(.x) %>%
+#           select(term, value)) %>%
+#     reduce(left_join, by = 'term'),
+# 
+#   "Who sold you marijuana last time?" = df4stats_list %>%
+#     map(~ get_who_sold_you_marijuana_last_time(.x) %>%
+#           select(term, value)) %>%
+#     reduce(left_join, by = 'term'),
+# 
+#   "Where did you buy marijuana last time?" = df4stats_list %>%
+#     map(~ get_where_did_you_buy(.x) %>%
+#           select(term, value)) %>%
+#     reduce(left_join, by = 'term'),
+# 
+#   "How near you when you bought marijuana last time?" = df4stats_list %>%
+#     map(~ get_how_near_were_you_when_bought_marijuana_last_time(.x) %>%
+#           select(term, value)) %>%
+#     reduce(left_join, by = 'term')
+# )
+# 
+# print(tables_stats %>%
+#         bind_rows(.id = 'variable') %>%
+#         xtable(.,
+#                align = rep('c', 11)),
+#       include.rownames=FALSE)
+# 

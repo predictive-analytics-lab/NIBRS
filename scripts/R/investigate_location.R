@@ -5,7 +5,8 @@ library(here)
 
 #df <- vroom(here('data', 'NIBRS', 'incidents_processed_2019.csv'))
 df <- vroom(here('data', 'output', 'cannabis_2010-2019_allincidents_summary.csv'))
-sr <- vroom(here('data', 'output', 'selection_ratio_county_2012-2019.csv'))
+#sr <- vroom(here('data', 'output', 'selection_ratio_county_2012-2019.csv'))
+lc <- vroom(here('data', 'output', 'LEAIC.tsv'))
 sc <- vroom(here('data', 'output', 'urban_codes_x_county_2013.csv')) %>%
     mutate(is_metro = ifelse(urbancounty == 'Large metro' | urbancounty == 'Small metro', 'metro', 'nonmetro'))
 
