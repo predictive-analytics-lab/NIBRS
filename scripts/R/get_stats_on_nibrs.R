@@ -53,8 +53,8 @@ get_incidents_info <- function(x){
     "% distributing", nrow(x %>% filter(criminal_act == 'distributing'))/all_incidents,
     nrow(xsub %>% filter(criminal_act == 'distributing'))/arrests,
     
-    '% other drugs present', nrow(x %>% filter(other_drugs_count > 0))/all_incidents,
-    nrow(xsub %>% filter(other_drugs_count > 0))/arrests,
+    '% other drugs present', nrow(x %>% filter(unique_drug_type_count > 1))/all_incidents,
+    nrow(xsub %>% filter(unique_drug_type_count > 1))/arrests,
     
     "% single offender", nrow(x %>% filter(offender_count == 1))/all_incidents,
     nrow(xsub %>% filter(offender_count == 1))/arrests,
