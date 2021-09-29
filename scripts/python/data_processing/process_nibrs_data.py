@@ -12,11 +12,21 @@ import glob
 import warnings
 from collections import Counter
 from ast import literal_eval as make_tuple
+from astral.sun import sunrise, sunset
+from astral import Observer
+from pytz import timezone
+import datetime
+from tqdm import tqdm
+import swifter
 
 data_path = Path(__file__).parent.parent.parent.parent / "data"
 data_name_drug_incidents = data_path / "NIBRS" / "raw" / "cannabis_allyears.csv"
 data_name_all_incidents = (
     data_path / "NIBRS" / "raw" / "cannabis_allyears_allincidents.csv"
+)
+data_name_hispanics = data_path / "NIBRS" / "raw" / "cannabis_allyears_hispanics.csv"
+fips_to_latlong = pd.read_csv(
+    data_path / "misc" / "us-county-boundaries-latlong.csv", dtype={"FIPS": str}
 )
 
 cols_to_use = [
@@ -27,6 +37,8 @@ cols_to_use = [
     "ori",
     "data_year",
     "location",
+    "incident_hour",
+    "incident_date",
 ]
 
 resolution_dict = {
@@ -68,13 +80,6 @@ def age_cat(age: int) -> str:
 #     return df, years
 
 
-def disjunction(*conditions):
-    """
-    Function which takes a list of conditions and returns the logical OR of them.
-    """
-    return functools.reduce(np.logical_or, conditions)
-
-
 def transform_location(location: tuple) -> str:
     try:
         location = make_tuple(location)
@@ -87,6 +92,25 @@ def transform_location(location: tuple) -> str:
     return max_key
 
 
+@functools.lru_cache(maxsize=None)
+def sunrise_sunset_time(
+    latitude: float,
+    longitude: float,
+    timezone: str,
+    incident_date: datetime,
+    incident_hour: int,
+) -> Tuple[int, int]:
+    county = Observer(latitude=latitude, longitude=longitude)
+    sunrise_time = sunrise(county, date=incident_date, tzinfo=timezone)
+    sunset_time = sunset(county, date=incident_date, tzinfo=timezone)
+    if incident_hour > sunrise_time.hour and incident_hour <= sunset_time.hour:
+        return "day"
+    elif incident_hour <= sunrise_time.hour or incident_hour > sunset_time.hour:
+        return "night"
+    else:
+        return "invalid"
+
+
 def load_and_process_nibrs(
     years: str,
     resolution: str,
@@ -94,6 +118,8 @@ def load_and_process_nibrs(
     arrests: bool = False,
     all_incidents: bool = False,
     location: bool = False,
+    time: str = "any",
+    time_type: str = "daylight",
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     This function loads the current nibrs dataset, and processes it.
@@ -117,10 +143,12 @@ def load_and_process_nibrs(
 
     if all_incidents:
         nibrs_df = pd.read_csv(data_name_all_incidents, usecols=cols_to_use)
+    elif hispanic:
+        nibrs_df = pd.read_csv(data_name_hispanics, usecols=cols_to_use)
     else:
         nibrs_df = pd.read_csv(data_name_drug_incidents, usecols=cols_to_use)
 
-    nibrs_df = nibrs_df[disjunction(*[nibrs_df.data_year == yi for yi in years])]
+    nibrs_df = nibrs_df[nibrs_df.data_year.isin(years)]
 
     nibrs_df["age_num"] = nibrs_df.age_num.apply(age_cat)
     nibrs_df["sex_code"] = nibrs_df.sex_code.map({"F": "female", "M": "male"})
@@ -150,6 +178,33 @@ def load_and_process_nibrs(
     )
 
     nibrs_df = pd.merge(nibrs_df, fips_ori_df, on="ori")
+
+    nibrs_df = nibrs_df.merge(fips_to_latlong, how="left", on="FIPS")
+
+    nibrs_df["incident_date"] = pd.to_datetime(nibrs_df["incident_date"])
+
+    if time != "any":
+        if time_type.lower() == "daylight":
+            nibrs_df["night_day"] = nibrs_df.apply(
+                lambda x: sunrise_sunset_time(
+                    x.lat, x.lon, x.timezone, x.incident_date, x.incident_hour
+                ),
+                axis=1,
+            )
+            assert time.lower() in ["day", "night"], "Invalid Time."
+            nibrs_df = nibrs_df[nibrs_df.night_day == time.lower()]
+        elif time_type.lower() == "simple":
+            if time.lower() == "day":
+                nibrs_df = nibrs_df[
+                    (nibrs_df.incident_hour >= 6) & (nibrs_df.incident_hour <= 20)
+                ]
+            elif time.lower() == "night":
+                nibrs_df = nibrs_df[
+                    (nibrs_df.incident_hour < 6) | (nibrs_df.incident_hour > 20)
+                ]
+        else:
+            raise ValueError("Invalid Time Type.")
+
     nibrs_df = pd.merge(nibrs_df, subregion_df, on="FIPS")
     nibrs_df["state_region"] = nibrs_df["State"] + "-" + nibrs_df["Region"]
 
@@ -223,18 +278,38 @@ if __name__ == "__main__":
         default=False,
         action="store_true",
     )
+    parser.add_argument(
+        "--time",
+        help="The time of the offense. Options: any, day, night. Default: any.",
+        type=str,
+        default="any",
+    )
+    parser.add_argument(
+        "--arrests",
+        help="""Whether to calculate the selection bias according to arrests,
+        rather than incidents.""",
+        action="store_true",
+        default=False,
+    )
+    parser.add_argument(
+        "--time_type",
+        help="""The type of time to use. Options are: simple which uses 6am-8pm inclusive, and daylight which assigns day/night based on whether it is light. Default: simple.""",
+        default="simple",
+    )
 
     args = parser.parse_args()
 
-    df, df_a = load_and_process_nibrs(
+    df = load_and_process_nibrs(
         args.year,
         args.resolution,
         args.hispanic,
         all_incidents=args.all_incidents,
-        arrests=True,
+        arrests=args.arrests,
         location=args.location,
+        time=args.time,
     )
     year = args.year if args.year else "2019"
-    if df is not None:
-        df.to_csv(data_path / "NIBRS" / f"incidents_processed_{year}.csv")
-        df_a.to_csv(data_path / "NIBRS" / f"arrests_processed_{year}.csv")
+    if args.arrests:
+        df.to_csv(data_path / "NIBRS" / f"arrests_{year}.csv")
+    else:
+        df.to_csv(data_path / "NIBRS" / f"incidents_{year}.csv")

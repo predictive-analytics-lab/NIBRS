@@ -33,6 +33,8 @@ target_variables = {
     "buying_outside": ["mean_bought_outside_day", "mean_bought_outside_day_se"],
     "traded": ["mean_traded_day", "mean_traded_day_se"],
     "traded_outside": ["mean_traded_outside_day", "mean_traded_outside_day_se"],
+    "dui": ["dui_past_year", "dui_past_year_se"],
+    "drunkeness": ["drunkeness_past_year", "drunkeness_past_year_se"],
 }
 
 var_names = ["MJ", "MJ_SE"]
@@ -44,9 +46,18 @@ def get_nsduh_data(
     metro: bool = False,
     hispanic: bool = False,
     target: Literal[
-        "using", "buying", "buying_outside", "traded", "traded_outside"
+        "using",
+        "buying",
+        "buying_outside",
+        "traded",
+        "traded_outside",
+        "dui",
+        "drunkeness",
+        "ucr_possesion",
     ] = "using",
 ):
+    if target == "ucr_possesion":
+        target = "using"
     vars_to_keep = ["year", "age", "race", "sex", "MJ", "MJ_SE"]
     df = get_file(poverty, metro, hispanic)
     if "-" in years:

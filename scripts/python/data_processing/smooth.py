@@ -25,6 +25,7 @@ def smooth_data(
     poverty: bool = False,
     urban_filter: int = 2,
     smoothing_param: int = 1,
+    group_years: bool = False,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     county_shp = gpd.read_file(data_path / "misc" / "us-county-boundaries.geojson")
     smoothed_nibrs = pd.DataFrame()
@@ -49,15 +50,30 @@ def smooth_data(
             urban_filter=urban_filter,
             smoothing_param=smoothing_param,
         )
-        state_sm_cdf = smooth_state(
-            state_cdf,
-            state_gdf,
-            state,
-            dem_vars_c,
-            "frequency",
-            urban_filter=urban_filter,
-            smoothing_param=smoothing_param,
-        )
+        if group_years:
+            state_sm_cdf = pd.DataFrame()
+            for year in state_cdf.year.unique():
+                state_sm_cdfi = smooth_state(
+                    state_cdf[state_cdf.year == year],
+                    state_gdf,
+                    state,
+                    dem_vars_c,
+                    "frequency",
+                    urban_filter=urban_filter,
+                    smoothing_param=smoothing_param,
+                )
+                state_sm_cdfi["year"] = year
+                state_sm_cdf = state_sm_cdf.append(state_sm_cdfi)
+        else:
+            state_sm_cdf = smooth_state(
+                state_cdf,
+                state_gdf,
+                state,
+                dem_vars_c,
+                "frequency",
+                urban_filter=urban_filter,
+                smoothing_param=smoothing_param,
+            )
 
         smoothed_nibrs = smoothed_nibrs.append(state_sm_idf)
         smoothed_census = smoothed_census.append(state_sm_cdf)
@@ -106,6 +122,9 @@ def smooth_state(
         return urban_df
 
     year = state_df.year.unique()[0]
+    if isinstance(year, str):
+        if "-" in year:
+            year = int(year.split("-")[-1])
 
     locations = state_df[["state", "state_region", "FIPS"]].drop_duplicates()
 
@@ -192,6 +211,9 @@ def filter_urban(
     min_incidents: int = 0,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     year = df.year.unique()[0]
+    if isinstance(year, str):
+        if "-" in year:
+            year = int(year.split("-")[-1])
     urban_codes = pd.read_csv(
         data_path / "misc" / "NCHSURCodes2013.csv", usecols=["FIPS code", "2013 code"]
     )

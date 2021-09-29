@@ -16,15 +16,15 @@ def _load_and_munge(file: Path, name: str) -> pd.DataFrame:
     return df
 
 
-def parse_dfs(directory: Path, logx: List[str] = []) -> List[pd.DataFrame]:
+def parse_dfs(directory: Path) -> List[pd.DataFrame]:
     combined_df = pd.DataFrame()
     for file in directory.rglob(f"*_all.csv"):
         name = file.name.split("_")[0]
         target = f"{name}_county_ratio"
         df = _load_and_munge(file, name)
         df[target] = df[name] / df[name].mean()
-        if target in logx:
-            df[target] = np.log10(df[target])
+        df[target] = df[target].rank(pct=True).astype(float)
+
         if (directory / f"{name}_black.csv").exists():
             black_df = _load_and_munge(directory / f"{name}_black.csv", f"black_{name}")
             white_df = _load_and_munge(directory / f"{name}_white.csv", f"white_{name}")
@@ -32,8 +32,7 @@ def parse_dfs(directory: Path, logx: List[str] = []) -> List[pd.DataFrame]:
             df = pd.merge(df, white_df, on="FIPS", how="left")
             bw_target = f"{name}_bw_ratio"
             df[bw_target] = df[f"black_{name}"] / df[f"white_{name}"]
-            if bw_target in logx:
-                df[bw_target] = np.log10(df[bw_target])
+            df[bw_target] = df[bw_target].rank(pct=True).astype(float)
         df = df.drop(
             columns=list(
                 {name, f"black_{name}", f"white_{name}"}.intersection(set(df.columns))
@@ -47,7 +46,7 @@ def parse_dfs(directory: Path, logx: List[str] = []) -> List[pd.DataFrame]:
 
 
 # %%
-df = parse_dfs(data_path, logx=["density_county_ratio"])
+df = parse_dfs(data_path)
 
 poverty_using = pd.read_csv(
     data_path.parent
@@ -81,54 +80,63 @@ dem_only_using = pd.read_csv(
     usecols=["FIPS", "selection_ratio", "var_log"],
 )
 
-urban_using = pd.read_csv(
+metro_using = pd.read_csv(
     data_path.parent
     / "output"
-    / "selection_ratio_county_2017-2019_grouped_bootstraps_1000_urban.csv",
+    / "selection_ratio_county_2017-2019_grouped_bootstraps_1000_metro.csv",
     dtype={"FIPS": str},
     usecols=["FIPS", "selection_ratio", "var_log"],
 )
 
-
-poverty_using["selection_ratio_log10_poverty"] = np.log10(
-    poverty_using["selection_ratio"]
+arrests = pd.read_csv(
+    data_path.parent
+    / "output"
+    / "selection_ratio_county_2017-2019_grouped_bootstraps_1000_poverty_arrests.csv",
+    dtype={"FIPS": str},
+    usecols=["FIPS", "selection_ratio", "var_log"],
 )
+
+arrests["selection_ratio_log_arrests"] = np.log(arrests["selection_ratio"])
+arrests["var_log_arrests"] = arrests["var_log"]
+
+poverty_using["selection_ratio_log_poverty"] = np.log(poverty_using["selection_ratio"])
 poverty_using["var_log_poverty"] = poverty_using["var_log"]
 
 
-poverty_buying["selection_ratio_log10_buying"] = np.log10(
-    poverty_buying["selection_ratio"]
-)
+poverty_buying["selection_ratio_log_buying"] = np.log(poverty_buying["selection_ratio"])
 poverty_buying["var_log_buying"] = poverty_buying["var_log"]
 
 
-poverty_buying_outside["selection_ratio_log10_buying_outside"] = np.log10(
+poverty_buying_outside["selection_ratio_log_buying_outside"] = np.log(
     poverty_buying_outside["selection_ratio"]
 )
 poverty_buying_outside["var_log_buying_outside"] = poverty_buying_outside["var_log"]
 
-dem_only_using["selection_ratio_log10_dem_only"] = np.log10(
+dem_only_using["selection_ratio_log_dem_only"] = np.log(
     dem_only_using["selection_ratio"]
 )
 dem_only_using["var_log_dem_only"] = dem_only_using["var_log"]
 
-urban_using["selection_ratio_log10_urban"] = np.log10(urban_using["selection_ratio"])
-urban_using["var_log_urban"] = urban_using["var_log"]
+metro_using["selection_ratio_log_metro"] = np.log(metro_using["selection_ratio"])
+metro_using["var_log_metro"] = metro_using["var_log"]
 
 
 poverty_using = poverty_using.drop(columns=["selection_ratio", "var_log"])
 poverty_buying = poverty_buying.drop(columns=["selection_ratio", "var_log"])
+arrests = arrests.drop(columns=["selection_ratio", "var_log"])
+
 poverty_buying_outside = poverty_buying_outside.drop(
     columns=["selection_ratio", "var_log"]
 )
 dem_only_using = dem_only_using.drop(columns=["selection_ratio", "var_log"])
-urban_using = urban_using.drop(columns=["selection_ratio", "var_log"])
+metro_using = metro_using.drop(columns=["selection_ratio", "var_log"])
 
 df = df.merge(poverty_using, on="FIPS")
 df = df.merge(poverty_buying, on="FIPS")
 df = df.merge(poverty_buying_outside, on="FIPS")
 df = df.merge(dem_only_using, on="FIPS")
-df = df.merge(urban_using, on="FIPS")
+df = df.merge(metro_using, on="FIPS")
+df = df.merge(arrests, on="FIPS")
 
 election = pd.read_csv(
     data_path.parent / "misc" / "election_results_x_county.csv",
@@ -152,11 +160,11 @@ from matplotlib import pyplot as plt
 dfs = [
     dem_only_using,
     poverty_using,
-    urban_using,
+    metro_using,
     poverty_buying,
     poverty_buying_outside,
 ]
-names = ["dem_only", "poverty", "urban", "buying", "buying_outside"]
+names = ["dem_only", "poverty", "metro", "buying", "buying_outside", "arrests"]
 
 results = []
 
@@ -171,7 +179,7 @@ for name in names:
         tfi = df.copy()
         tfi = tfi[~tfi[col].isnull()]
         y, X = dmatrices(
-            f"selection_ratio_log10_{name} ~ {col}", data=tfi, return_type="dataframe"
+            f"selection_ratio_log_{name} ~ {col}", data=tfi, return_type="dataframe"
         )
         model = sm.WLS(
             y,
@@ -186,15 +194,15 @@ for name in names:
         # g = sns.jointplot(
         #     data=tfi,
         #     x=col,
-        #     y=f"selection_ratio_log10_{name}",
+        #     y=f"selection_ratio_log_{name}",
         #     kind="reg",
         # )
         # plt.text(x=0.5, y=2.2, s=f"slope: {coef:.3f}\n ci: {pvalue:.3f}")
-        # g.ax_joint.set_ylabel("log10(selection_ratio)")
+        # g.ax_joint.set_ylabel("log(selection_ratio)")
         # g.ax_joint.set_xlabel(col)
         # plt.title(f"{name} {col}")
         # plt.show()
-        result = f"{coef:.3f} ({std_error:.6f})"
+        result = f"{coef:.3f} ({std_error:.3f})"
         if pvalue <= 0.05:
             result += "*"
         if pvalue <= 0.01:
@@ -204,6 +212,21 @@ for name in names:
         results += [[name, col, result]]
 
 result_df = pd.DataFrame(results, columns=["model", "correlate", "coef (p-value)"])
+
+
+def check_coef(df, col1, col2):
+    df = df[~df[col1].isnull()]
+    df = df[~df[col2].isnull()]
+    y, X = dmatrices(f"{col1} ~ {col2}", data=df, return_type="dataframe")
+    model = sm.OLS(
+        y,
+        X,
+    )
+    model_res = model.fit()
+    model_res = model_res.get_robustcov_results(cov_type="HC1")
+    print(model_res.summary())
+
+
 # %%
 
 correlate_order = [
@@ -244,7 +267,14 @@ correlate_names = [
     "Census Response rate",
 ]
 
-model_names = ["Dem only", "Dem + Pov", "Dem + Urban", "Buying", "Buying Outside"]
+model_names = [
+    "Dem only",
+    "Dem + Pov",
+    "Dem + metro",
+    "Buying",
+    "Buying Outside",
+    "Arrests",
+]
 
 
 name_conv = {k: v for k, v in zip(correlate_order, correlate_names)}
@@ -305,26 +335,31 @@ def filter_legal(df: pd.DataFrame, legal: bool = False):
         return df_temp
 
 
-def get_year_data(name: str, legal: bool, reported: bool):
-    filename = "selection_ratio_county_2012-2019_bootstraps_1000"
+def get_year_data(name: str, log_ratio: bool, legal: bool, reported: bool):
+    filename = "selection_ratio_county_2010-2019_bootstraps_1000"
     if name == "Dem only":
         filename += ".csv"
     if name == "Dem + Pov":
         filename += "_poverty.csv"
-    if name == "Dem + Urban":
-        filename += "_urban.csv"
+    if name == "Dem + metro":
+        filename += "_metro.csv"
     if name == "Buying":
         filename += "_poverty_buying.csv"
     if name == "Buying Outside":
         filename += "_poverty_buying_outside.csv"
-    df = pd.read_csv(data_path.parent / "output" / filename, dtype={"FIPS": str})
+    if name == "Arrests":
+        filename += "_poverty_arrests.csv"
+    df = pd.read_csv(
+        data_path.parent.parent / "turing_output" / filename, dtype={"FIPS": str}
+    )
     if legal:
         df = filter_legal(df, legal=True)
     else:
         df = filter_legal(df, legal=False)
     if reported:
         df = reporting_throughout(df)
-    df["selection_ratio"] = np.log10(df["selection_ratio"])
+    if log_ratio:
+        df["selection_ratio"] = np.log(df["selection_ratio"])
     y, X = dmatrices(f"selection_ratio ~ year", data=df, return_type="dataframe")
     model = sm.WLS(
         y,
@@ -336,7 +371,7 @@ def get_year_data(name: str, legal: bool, reported: bool):
     coef = model_res.params[1]
     pvalue = model_res.pvalues[1]
     std_error = model_res.HC1_se[1]
-    result = f"{coef:.3f} ({std_error:.6f})"
+    result = f"{coef:.3f} ({std_error:.3f})"
     if pvalue <= 0.05:
         result += "*"
     if pvalue <= 0.01:
@@ -346,13 +381,19 @@ def get_year_data(name: str, legal: bool, reported: bool):
     return result
 
 
-time_names = [f"Time^{i}" for i in range(1, 5)]
+time_names = [f"Time {i}" for i in range(1, 5)] + [
+    f"Time {i} Log SR" for i in range(1, 5)
+]
 
 time_results = [
-    [get_year_data(name, False, True) for name in model_names],
-    [get_year_data(name, False, False) for name in model_names],
-    [get_year_data(name, True, True) for name in model_names],
-    [get_year_data(name, True, False) for name in model_names],
+    [get_year_data(name, False, False, True) for name in model_names],
+    [get_year_data(name, False, False, False) for name in model_names],
+    [get_year_data(name, False, True, True) for name in model_names],
+    [get_year_data(name, False, True, False) for name in model_names],
+    [get_year_data(name, True, False, True) for name in model_names],
+    [get_year_data(name, True, False, False) for name in model_names],
+    [get_year_data(name, True, True, True) for name in model_names],
+    [get_year_data(name, True, True, False) for name in model_names],
 ]
 
 time_df = pd.DataFrame(time_results, columns=model_names, index=time_names)
