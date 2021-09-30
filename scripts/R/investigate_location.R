@@ -35,12 +35,23 @@ df <- df %>%
         grepl('road', all_locations_1) ~ 'road',
         grepl('hotel', all_locations_1) ~ 'hotel',
         grepl('parking', all_locations_1) ~ 'parking',
-        TRUE ~ 'other'
-    ))
+        all_locations_1 != '' & all_locations_1 != ' ' ~  'other'
+    ),
+    all_locations_2 = case_when(
+        grepl('school', all_locations_2) ~ 'school',
+        grepl('home', all_locations_2) ~ 'home',
+        grepl('road', all_locations_2) ~ 'road',
+        grepl('hotel', all_locations_2) ~ 'hotel',
+        grepl('parking', all_locations_2) ~ 'parking',
+        all_locations_2 != '' & all_locations_2 != ' ' ~  'other'
+    )
+    )
+
+df$n_locations <- 2 - is.na(df$all_locations_1) - is.na(df$all_locations_2)
 
 df %>%
     filter(!other_offense) %>%
-    filter(other_drugs_count == 0) %>%
+    filter(unique_drug_type_count == 1) %>%
     filter(other_criminal_act_count == 0) %>%
     group_by(FIPS, race, all_locations_1) %>%
     summarise(n_incidents = n()) %>%
