@@ -50,6 +50,11 @@ all_incidents["diff"] = (
 )
 # %%
 
+
+def model_difference_plots(dataset_name_A: str, dataset_name_B: str) -> None:
+    pass
+
+
 sns.set(font_scale=1.2, rc={"text.usetex": True, "legend.loc": "upper left"})
 
 
