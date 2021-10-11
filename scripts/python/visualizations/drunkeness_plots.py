@@ -23,16 +23,19 @@ arrests["Model"] = "\\texttt{Use}\\textsubscript{Dmg+Pov, Arrests}"
 arrests["selection_ratio"] = np.log(arrests["selection_ratio"])
 
 
-dui = pd.read_csv(
+drunkeness = pd.read_csv(
     data_path
     / "output"
-    / "selection_ratio_county_2017-2019_grouped_bootstraps_1000_poverty_dui.csv",
+    / "selection_ratio_county_2017-2019_grouped_bootstraps_1000_poverty_hispanics_drunkeness.csv",
     dtype={"FIPS": str},
     usecols=["FIPS", "selection_ratio", "black_incidents", "white_incidents"],
 )
 
-dui["Model"] = "\\texttt{DUI}\\textsubscript{Dmg+Pov, Arrests}"
-dui["selection_ratio"] = np.log(dui["selection_ratio"])
+drunkeness["Model"] = "\\texttt{Drunkeness}\\textsubscript{Dmg+Pov, Arrests}"
+drunkeness["selection_ratio"] = np.log(drunkeness["selection_ratio"])
+
+arrests = arrests[arrests.FIPS.isin(drunkeness.FIPS)]
+drunkeness = drunkeness[drunkeness.FIPS.isin(arrests.FIPS)]
 
 
 def remove_nonsense(df):
@@ -45,11 +48,11 @@ def remove_nonsense(df):
     return df
 
 
+drunkeness = remove_nonsense(drunkeness)
 arrests = remove_nonsense(arrests)
-dui = remove_nonsense(dui)
 
 
-data = pd.concat([dui.copy(), arrests.copy()], ignore_index=True)
+data = pd.concat([drunkeness.copy(), arrests.copy()], ignore_index=True)
 
 
 arrests = arrests.rename(
@@ -59,8 +62,8 @@ arrests = arrests.rename(
     }
 )
 
-dui = arrests.merge(dui, on="FIPS")
-dui["diff"] = dui["selection_ratio"] - dui["selection_ratio_base"]
+drunkeness = arrests.merge(drunkeness, on="FIPS")
+drunkeness["diff"] = drunkeness["selection_ratio"] - drunkeness["selection_ratio_base"]
 # %%
 
 sns.set(font_scale=1.2, rc={"text.usetex": True, "legend.loc": "upper left"})
@@ -68,7 +71,7 @@ sns.set(font_scale=1.2, rc={"text.usetex": True, "legend.loc": "upper left"})
 
 sns.set_style("ticks")
 ax = sns.histplot(
-    data=dui,
+    data=drunkeness,
     x="diff",
     fill=True,
     palette="colorblind",
@@ -76,14 +79,14 @@ ax = sns.histplot(
     alpha=0.5,
     linewidth=0,
 )
-ax.set_xlim([-5, 5])
+ax.set_xlim([-8, 8])
 
 ax.set_ylabel("")
 ax.set_xlabel(
-    "Log(enforcement ratio Use\\textsubscript{Dmg+Pov, Arrests}) - Log(enforcement ratio DUI\\textsubscript{Dmg+Pov, Arrests})"
+    "Log(enforcement ratio Use\\textsubscript{Dmg+Pov, Arrests}) - Log(enforcement ratio Drunkeness\\textsubscript{Dmg+Pov, Arrests})"
 )
 plt.tight_layout()
-plt.savefig(plots_path / "dui_difference_distribution.pdf", bbox_inches="tight")
+plt.savefig(plots_path / "drunkeness_difference_distribution.pdf", bbox_inches="tight")
 plt.clf()
 plt.cla()
 plt.close()  # plt.show()
@@ -102,32 +105,36 @@ ax = sns.histplot(
     alpha=0.5,
     linewidth=0,
 )
-ax.set_xlim([-5, 5])
+ax.set_xlim([-8, 8])
 
 ax.set_ylabel("")
 ax.set_xlabel("Log(Differential Enforcement Ratio)")
 
-plt.savefig(plots_path / "dui_distribution.pdf", bbox_inches="tight")
+plt.savefig(plots_path / "drunkeness_distribution.pdf", bbox_inches="tight")
 plt.clf()
 plt.cla()
 plt.close()
-# plt.savefig(plots_path / "dui_distribution.pdf")
+# plt.savefig(plots_path / "drunkeness_distribution.pdf")
 # plt.show()
 # %%
 from scipy import stats
 
 sns.set_style("white")
 
-dui["srb"] = dui["selection_ratio_base"]
-dui["sr"] = dui["selection_ratio"]
+drunkeness["srb"] = drunkeness["selection_ratio_base"]
+drunkeness["sr"] = drunkeness["selection_ratio"]
 
 ax = sns.lmplot(
-    data=dui, x="srb", y="sr", scatter_kws={"color": "black"}, line_kws={"color": "red"}
+    data=drunkeness,
+    x="srb",
+    y="sr",
+    scatter_kws={"color": "black"},
+    line_kws={"color": "red"},
 )
 # plt.plot(np.linspace(-4, 8), np.linspace(-4, 8), color="black")
 
 ax.ax.set_ylabel(
-    "Log(\\texttt{DUI}\\textsubscript{Dmg+Pov, Arrests} Differential Enforcement Ratio)"
+    "Log(\\texttt{Drunkeness}\\textsubscript{Dmg+Pov, Arrests} Differential Enforcement Ratio)"
 )
 ax.ax.set_xlabel(
     "Log(\\texttt{Use}\\textsubscript{Dmg+Pov, Arrests} Differential Enforcement Ratio)"
@@ -138,10 +145,10 @@ ax.ax.set_ylim([-4, 8])
 
 ax.ax.spines["right"].set_visible(True)
 ax.ax.spines["top"].set_visible(True)
-# res = stats.linregress(x=dui.selection_ratio_base, y=dui.selection_ratio)
+# res = stats.linregress(x=drunkeness.selection_ratio_base, y=drunkeness.selection_ratio)
 # plt.text(x=0.5, y=8, s=f"slope: {res.slope:.6f}\n ci: {res.pvalue:.6f}")
 
-plt.savefig(plots_path / "dui_correlation.pdf", bbox_inches="tight")
+plt.savefig(plots_path / "drunkeness_correlation.pdf", bbox_inches="tight")
 # plt.show()
 plt.clf()
 plt.cla()
@@ -152,7 +159,7 @@ import statsmodels.api as sm
 from patsy import dmatrices
 
 y, X = dmatrices(
-    f"selection_ratio ~ selection_ratio_base", data=dui, return_type="dataframe"
+    f"selection_ratio ~ selection_ratio_base", data=drunkeness, return_type="dataframe"
 )
 model = sm.OLS(
     y,
