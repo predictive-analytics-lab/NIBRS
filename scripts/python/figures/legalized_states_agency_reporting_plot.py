@@ -1,4 +1,3 @@
-# %%
 import pandas as pd
 import seaborn as sns
 from matplotlib import pyplot as plt
@@ -57,4 +56,3 @@ for i, ax in enumerate(g.axes):
 
 g.set_axis_labels(y_var="Number of reporting agencies", x_var="Year")
 plt.savefig(plots_path / "agency_count.pdf")
-# %%
