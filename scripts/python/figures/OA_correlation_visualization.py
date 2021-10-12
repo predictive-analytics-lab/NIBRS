@@ -65,7 +65,10 @@ df = df.rename(columns={"selection_ratio": "Selection Ratio"})
 
 # %%
 
-sns.set(font_scale=1.2, rc={"text.usetex": True, "legend.loc": "upper left"})
+
+sns.set(
+    style="white", font_scale=1.2, rc={"text.usetex": True, "legend.loc": "upper left"}
+)
 
 
 df_poverty = df[df.Model == "Dems + Poverty"]
