@@ -21,7 +21,7 @@ from process_census_data import get_census_data
 from process_nsduh_data import get_nsduh_data
 from process_nibrs_data import load_and_process_nibrs
 from process_ucr_data import get_ucr_data
-from smooth import smooth_data
+from geographic_smoothing import smooth_data
 
 ##### LOAD DATASETS ######
 
