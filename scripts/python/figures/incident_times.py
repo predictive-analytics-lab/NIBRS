@@ -1,4 +1,3 @@
-# %%
 import pandas as pd
 import seaborn as sns
 from matplotlib import pyplot as plt
@@ -11,6 +10,7 @@ from pathlib import Path
 
 
 data_path = Path(__file__).parents[3] / "data" / "NIBRS" / "raw"
+plot_path = Path(__file__).parents[3] / "plots"
 
 df = pd.read_csv(
     data_path / "cannabis_allyears.csv", usecols=["incident_hour", "data_year", "race"]
@@ -20,11 +20,6 @@ df = pd.read_csv(
 df = df[~df.incident_hour.isnull()]
 
 df = df.rename(columns={"race": "Race"})
-
-# df["incident_hour"] = df["incident_hour"].astype(str)
-
-
-# %%
 
 sns.set_style("whitegrid")
 
@@ -42,8 +37,5 @@ ax = sns.histplot(
 )
 
 ax.set_xlabel("Time")
-# ax.set_xticklabels(ax.get_xticklabels(), rotation=45)
 
-plt.show()
-
-# %%
+plt.savefig(plot_path / "time_distribution.pdf")

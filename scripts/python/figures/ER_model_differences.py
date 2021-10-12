@@ -2,6 +2,8 @@
 
 Specifically:
     Model distribution, difference distribution, and regression plots between baseline and comparison models.
+    
+Output is saved in the NIBRS/plots directory.
 """
 from typing import List, Tuple
 from dataclasses import dataclass

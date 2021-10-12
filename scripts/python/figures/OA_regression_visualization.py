@@ -1,4 +1,3 @@
-# %%
 import pandas as pd
 from pathlib import Path
 
@@ -6,6 +5,7 @@ import seaborn as sns
 from matplotlib import pyplot as plt
 
 data_path = Path(__file__).parents[3] / "data"
+plot_path = Path(__file__).parents[3] / "plots"
 
 df = pd.read_csv(data_path / "correlates" / "processed_correlates.csv", index_col=0)
 df = df.drop(columns=[x for x in df.columns if x.startswith("var_log")])
@@ -63,9 +63,6 @@ df["Property"] = df["Property"].map(correlate_map)
 df["Correlate Value"] = df["Correlate Value"].astype(float)
 df = df.rename(columns={"selection_ratio": "Selection Ratio"})
 
-# %%
-
-
 sns.set(
     style="white", font_scale=1.2, rc={"text.usetex": True, "legend.loc": "upper left"}
 )
@@ -84,5 +81,4 @@ sns.lmplot(
     line_kws={"color": "red"},
 )
 
-plt.show()
-# %%
+plt.savefig(plot_path / "OA_regression_plots.pdf")
