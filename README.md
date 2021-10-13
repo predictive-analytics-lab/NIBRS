@@ -34,9 +34,9 @@ In order to produce the enforcement ratios you must either download the pre-requ
 2. Produce the appropriate NIBRS dataset. Using the query_nibrs.py python script `python scripts/python/data_processing/query_nibrs.py`. The script has a number of arguments that can be explored with: `python query_nibrs.py -h`.
 
 3. Produce the enforcement ratios. Run the selection_ratio.py script `scripts/python/data_processing/selection_bias.py` with appropriate arguments. Run `scripts/python/data_processing/selection_bias.py -h` for help, or consult the image below:
-
-<img align="center" src="https://raw.githubusercontent.com/predictive-analytics-lab/NIBRS/1f5e28c838f2535420b9e3d74388b22e4d5da759/docs/sb_help.svg">
-
+<p align="center">
+    <img src="https://raw.githubusercontent.com/predictive-analytics-lab/NIBRS/1f5e28c838f2535420b9e3d74388b22e4d5da759/docs/sb_help.svg">
+</p>
 ### Paper Figures
 
 There are many scripts used to create the figures and tables in the paper, please consult the table below to find which script corresponds to which figure:
