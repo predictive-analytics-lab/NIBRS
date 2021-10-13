@@ -35,7 +35,7 @@ In order to produce the enforcement ratios you must either download the pre-requ
 
 3. Produce the enforcement ratios. Run the selection_ratio.py script `scripts/python/data_processing/selection_bias.py` with appropriate arguments. Run `scripts/python/data_processing/selection_bias.py -h` for help, or consult the image below:
 
-![Selection Bias Help](docs/sb_help.png)
+![Selection Bias Help](docs/sb_help.svg)
 
 ### Paper Figures
 
