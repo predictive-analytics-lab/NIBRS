@@ -37,6 +37,7 @@ In order to produce the enforcement ratios you must either download the pre-requ
 <p align="center">
     <img src="https://raw.githubusercontent.com/predictive-analytics-lab/NIBRS/f588fa32bc38845a09bfdfb56b34c864aa635a3a/docs/sb_help.svg">
 </p>
+
 ### Paper Figures
 
 There are many scripts used to create the figures and tables in the paper, please consult the table below to find which script corresponds to which figure:
