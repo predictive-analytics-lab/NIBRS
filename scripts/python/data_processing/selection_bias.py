@@ -10,12 +10,13 @@ import warnings
 import argparse
 from typing import Callable, List, Optional, Tuple
 from typing_extensions import Literal
-import numpy as np
-import pandas as pd
-import seaborn as sns
 from pathlib import Path
 from itertools import product
 import subprocess
+
+import numpy as np
+import pandas as pd
+import seaborn as sns
 
 from process_census_data import get_census_data
 from process_nsduh_data import get_nsduh_data
@@ -537,7 +538,6 @@ def main(
 
     if all_incidents:
         filename += "_all_incidents"
-        
 
     if hispanics:
         filename += "_hispanics"
