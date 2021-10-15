@@ -10,18 +10,19 @@ import warnings
 import argparse
 from typing import Callable, List, Optional, Tuple
 from typing_extensions import Literal
-import numpy as np
-import pandas as pd
-import seaborn as sns
 from pathlib import Path
 from itertools import product
 import subprocess
+
+import numpy as np
+import pandas as pd
+import seaborn as sns
 
 from process_census_data import get_census_data
 from process_nsduh_data import get_nsduh_data
 from process_nibrs_data import load_and_process_nibrs
 from process_ucr_data import get_ucr_data
-from smooth import smooth_data
+from geographic_smoothing import smooth_data
 
 ##### LOAD DATASETS ######
 
@@ -59,6 +60,7 @@ def incident_users(
     metro: bool,
     years: bool = False,
     ucr: bool = False,
+    dont_aggregate: bool = False,
 ) -> pd.DataFrame:
     vars = ["race", "age", "sex"]
     if poverty:
@@ -90,6 +92,15 @@ def incident_users(
     # census_df["users_var"] = (census_df["prob_dem"] ** 2) * census_df["users"] * (census_df["prob_usage_one_dat_se"] ** 2) * 365.0
 
     census_df["users_var"] = census_df["users"] * (census_df["MJ_SE"] ** 2) * 365.0
+
+    if dont_aggregate:
+        vars = list(set(vars) - {"poverty", "metrocounty"})
+        census_df = (
+            census_df.groupby([*vars, resolution_dict[resolution]])
+            .sum()
+            .reset_index()[[*vars, resolution_dict[resolution], "users", "users_var"]]
+        )
+        return census_df.merge(nibrs_df, on=[*vars, resolution_dict[resolution]])
 
     users = (
         census_df.groupby(["race", resolution_dict[resolution]])
@@ -432,6 +443,7 @@ def main(
     time: str,
     time_type: str,
     hispanics: bool,
+    dont_aggregate: bool,
 ):
 
     if not group_years:
@@ -493,23 +505,27 @@ def main(
             metro,
             years=group_years,
             ucr=ucr,
+            dont_aggregate=dont_aggregate,
         )
         incident_users_df = incident_users_df.fillna(0)
 
-        if ci == "none":
-            temp_df = selection_ratio(incident_users_df, wilson=False)
-        elif ci == "wilson":
-            temp_df = selection_ratio(incident_users_df, wilson=True)
-        else:
-            temp_df = bootstrap_selection(incident_users_df, bootstraps)
-            temp_df = delta_method(temp_df)
+        if not dont_aggregate:
+            if ci == "none":
+                temp_df = selection_ratio(incident_users_df, wilson=False)
+            elif ci == "wilson":
+                temp_df = selection_ratio(incident_users_df, wilson=True)
+            else:
+                temp_df = bootstrap_selection(incident_users_df, bootstraps)
+                temp_df = delta_method(temp_df)
 
-        if not ucr:
-            temp_df = add_extra_information(
-                temp_df, incident_df, population_df, resolution, yi
-            )
-            temp_df = add_race_ratio(population_df, temp_df, resolution)
-            #### END ###
+            if not ucr:
+                temp_df = add_extra_information(
+                    temp_df, incident_df, population_df, resolution, yi
+                )
+                temp_df = add_race_ratio(population_df, temp_df, resolution)
+                #### END ###
+        else:
+            temp_df = incident_users_df.copy()
 
         temp_df["year"] = yi
         selection_bias_df = selection_bias_df.append(temp_df.copy())
@@ -537,7 +553,6 @@ def main(
 
     if all_incidents:
         filename += "_all_incidents"
-        
 
     if hispanics:
         filename += "_hispanics"
@@ -558,6 +573,9 @@ def main(
 
     if arrests:
         filename += "_arrests"
+
+    if dont_aggregate:
+        filename += "_not_aggregated"
 
     filename += ".csv"
     selection_bias_df.to_csv(data_path / "output" / filename)
@@ -660,6 +678,12 @@ if __name__ == "__main__":
         action="store_true",
         default=False,
     )
+    parser.add_argument(
+        "--dont-aggregate",
+        help="""Flag indicating whether to simply return the raw counts of users and incidents. Used for visualizations etc.""",
+        action="store_true",
+        default=False,
+    )
     args = parser.parse_args()
 
     if int(args.bootstraps) > 0 and args.ci != "bootstrap":
@@ -682,4 +706,5 @@ if __name__ == "__main__":
         time=args.time,
         time_type=args.time_type,
         hispanics=args.hispanics,
+        dont_aggregate=args.dont_aggregate,
     )

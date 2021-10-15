@@ -1,4 +1,3 @@
-# %%
 import pandas as pd
 from pathlib import Path
 
@@ -6,6 +5,7 @@ import seaborn as sns
 from matplotlib import pyplot as plt
 
 data_path = Path(__file__).parents[3] / "data"
+plot_path = Path(__file__).parents[3] / "plots"
 
 df = pd.read_csv(data_path / "correlates" / "processed_correlates.csv", index_col=0)
 df = df.drop(columns=[x for x in df.columns if x.startswith("var_log")])
@@ -37,7 +37,7 @@ df = df.melt(
     id_vars=id_cols,
     value_vars=value_cols,
     var_name="Property",
-    value_name="Correlate_Value",
+    value_name="Correlate Value",
 )
 
 correlate_map = {
@@ -60,55 +60,25 @@ correlate_map = {
 
 df = df[df["Property"].isin(correlate_map.keys())]
 df["Property"] = df["Property"].map(correlate_map)
-df.Correlate_Value = df.Correlate_Value.astype(float)
+df["Correlate Value"] = df["Correlate Value"].astype(float)
+df = df.rename(columns={"selection_ratio": "Selection Ratio"})
 
-# %%
-
-g = sns.FacetGrid(df, col="Property", col_wrap=4, hue="Model", sharex=False)
-
-# g.map(
-#     sns.scatterplot,
-#     "Correlate_Value",
-#     "selection_ratio",
-#     palette="colorblind",
-#     alpha=0.5,
-#     size=0.1
-# )
-
-g.map(
-    sns.kdeplot,
-    "Correlate_Value",
-    "selection_ratio",
-    palette="colorblind",
-    alpha=0.5,
-    fill=True,
-    levels=10,
+sns.set(
+    style="white", font_scale=1.2, rc={"text.usetex": True, "legend.loc": "upper left"}
 )
 
-g.axes[5].set_xlim([0.75, 1.25])
-g.axes[9].set_xlim([0, 25])
-g.axes[12].set_xlim([0.8, 1.2])
-
-g.add_legend()
-
-plt.show()
-# %%
 
 df_poverty = df[df.Model == "Dems + Poverty"]
 
-g = sns.FacetGrid(df_poverty, col="Property", col_wrap=3)
 
-g.map(
-    sns.scatterplot,
-    "Correlate_Value",
-    "selection_ratio",
-    palette="colorblind",
-    alpha=0.5,
-    size=0.1,
+sns.lmplot(
+    x="Correlate Value",
+    y="Selection Ratio",
+    col="Property",
+    col_wrap=3,
+    data=df_poverty,
+    scatter_kws={"color": "black"},
+    line_kws={"color": "red"},
 )
 
-
-g.add_legend()
-
-plt.show()
-# %%
+plt.savefig(plot_path / "OA_regression_plots.pdf")
