@@ -74,26 +74,13 @@ There are many scripts used to create the figures and tables in the paper, pleas
 
 | Table | Script |
 |:---:|:---:|
-| 1 | R/generate_plots_4paper.R |
-| 2 | python/enforcement_ratio_model_plots.py |
-| 3 | R/generate_plots_4paper.R |
-| S1 | python/nsduh_usage_plot.py |
-| S2 | R/generate_plots_4paper.R |
-| S3 | python/enforcement_ratio_location_plot.py |
-| S4 | python/legalized_states_agency_reporting_plot.py |
-| S5 | Need to add |
-| S6 | Need to add |
-| S7 | R/generate_plots_4paper.R |
-| S8 | python/enforcement_ratio_model_plots.py |
-| S9 | R/generate_plots_4paper.R |
-| S10 | python/enforcement_ratio_model_plots.py |
-| S11 | R/generate_plots_4paper.R |
-| S12 | python/enforcement_ratio_model_plots.py |
-| S13 | R/generate_plots_4paper.R |
-| S14 | python/enforcement_ratio_model_plots.py |
-| S15 | R/generate_plots_4paper.R |
-| S16 | Doesn't exist in paper? Bug in latex maybe? |
-| S17 | python/enforcement_ratio_model_plots.py |
-| S18 | R/generate_plots_4paper.R |
-| S19 | python/time_distribution_plot.py + python/enforcement_ratio_model_plots.py |
-| S20 | R/generate_plots_4paper.R |
+| 1 | N/A |
+| 2 | python/enforcement_ratio_n_counties_table.py |
+| 3 | R/process_usage_data_nsduh.R |
+| 4 | R/get_stats_on_nibrs.R |
+| 5 | python/opportunity_atlas_regression_table.py + python/time_regression_table.py |
+| S1 | R/process_usage_data_nsduh.R |
+| S2 | R/get_stats_on_nibrs.R |
+| S3 | R/get_stats_on_nibrs.R |
+| S4 | R/get_stats_on_nibrs.R |
+| S5 | python/opportunity_atlas_regression_table.py + python/time_regression_table.py |
