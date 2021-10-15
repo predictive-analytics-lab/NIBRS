@@ -53,8 +53,8 @@ There are many scripts used to create the figures and tables in the paper, pleas
 | S2 | R/generate_plots_4paper.R |
 | S3 | python/enforcement_ratio_location_plot.py |
 | S4 | python/legalized_states_agency_reporting_plot.py |
-| S5 | NEEDS ADDING |
-| S6 | NEEDS ADDING |
+| S5 | python/enforcement_rate_by_demographic.py |
+| S6 | python/enforcement_rate_by_demographic.py |
 | S7 | R/generate_plots_4paper.R |
 | S8 | python/enforcement_ratio_model_plots.py |
 | S9 | R/generate_plots_4paper.R |
