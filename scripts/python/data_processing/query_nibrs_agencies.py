@@ -1,4 +1,6 @@
 from os import PathLike
+
+import numpy as np
 from process_census_data import load_and_process_census_data
 from typing import Generator, List, Optional
 import pandas as pd
@@ -78,8 +80,9 @@ def coverage(agency_df: pd.DataFrame) -> pd.DataFrame:
 
     census = census.merge(agency_df, on=["FIPS", "year"], how="left")
     census = census.fillna(0)
-
-    census["coverage"] = census.population / census.frequency
+    
+    # Max value of 1
+    census["coverage"] = (census.population / census.frequency).apply(lambda x: np.min([1, x]))
 
     return census[["FIPS", "year", "coverage", "population", "frequency"]]
 

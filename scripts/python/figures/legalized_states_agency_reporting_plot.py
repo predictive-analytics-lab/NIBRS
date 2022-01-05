@@ -3,19 +3,22 @@ import seaborn as sns
 from matplotlib import pyplot as plt
 import numpy as np
 
-plots_path = Path(__file__).parents[3] / "plots"
-
 plt.style.use("ggplot")
 
 from pathlib import Path
 
-sns.set(font_scale=1.1, rc={"text.usetex": True})
+plots_path = Path(__file__).parents[3] / "plots"
+data_path = Path(__file__).parents[3] / "data" / "misc"
 
-df = pd.read_csv("/home/dev/Desktop/ttt.csv", index_col=0)
+
+df = pd.read_csv(data_path / "county_reporting_legal_states.csv", index_col=0)
 
 sns.set_style("white")
 
 df["ry"] = df["reporting_year"]
+
+sns.set_context("paper", font_scale=1.7)
+sns.set_style("whitegrid")
 
 g = sns.catplot(
     data=df,
@@ -23,10 +26,12 @@ g = sns.catplot(
     x="year",
     y="ry",
     col="state",
-    col_wrap=3,
+    col_wrap=2,
     color="#37474F",
-    height=3,
-    aspect=1.3,
+    height=4,
+    aspect=1.5,
+    sharey=False,
+    sharex=True,
 )
 
 g.set_xticklabels(rotation=45)
@@ -42,16 +47,9 @@ info = [
 
 for i, ax in enumerate(g.axes):
     infoi = info[i]
-    for p in ax.patches:
-        ax.text(
-            p.get_x() + 0.17,
-            infoi["y"],
-            f"$\\frac{{{int(p.get_height())}}}{{{infoi['count']}}}$",
-            color=infoi["c"],
-            rotation="horizontal",
-            size="large",
-        )
-        ax.set_title(infoi["name"])
+    ax.set_title(f"{infoi['name']}, Total Counties: {infoi['count']}")
+    ax.set_ylim([0, infoi["count"]])
+    ax.axhline(infoi["count"])
 
 
 g.set_axis_labels(y_var="Number of reporting agencies", x_var="Year")

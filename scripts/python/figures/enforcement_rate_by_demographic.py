@@ -8,6 +8,7 @@ from matplotlib import pyplot as plt
 output_dir = Path(__file__).parents[3] / "data" / "output"
 plot_dir = Path(__file__).parents[3] / "data" / "plots"
 
+sns.set_context("paper", font_scale=2)
 
 def plot_bars(data: pd.DataFrame) -> None:
     p = "colorblind"  # ["#a7ffeb", "#00695c"]
@@ -19,7 +20,7 @@ def plot_bars(data: pd.DataFrame) -> None:
         sharex=False,
         palette=p,
         height=5,
-        aspect=5 / 5,
+        aspect=1.5,
         gridspec_kws={"hspace": 0.4, "wspace": 0},
     )
     g = g.map(sns.barplot, "race", "value", ci=None).add_legend()
@@ -43,12 +44,12 @@ def plot_lines(data: pd.DataFrame) -> None:
         palette=p,
         sharex=False,
         height=5,
-        aspect=5 / 5,
+        aspect=1.5,
         gridspec_kws={"hspace": 0.4, "wspace": 0},
     )
     g = g.map(sns.lineplot, "year", "value", ci=None).add_legend()
     g.despine(left=True)
-    g.set_ylabels("Enforcement rate")
+    g.set_ylabels("Number of Incidents or Arrests")
 
     g.fig.subplots_adjust(top=0.85)
     # g.fig.suptitle("Number of Incidents/Arrests per 100,000 Cannabis user-years by demographic")

@@ -16,9 +16,9 @@ library(tidyr)
 
 source(here("scripts", "R", "utils_plot.R"))
 
-# sr <- vroom(here('data', 'output', "selection_ratio_county_2017-2019_grouped_bootstraps_1000_poverty.csv"))
+sr <- vroom(here('data', 'output', "selection_ratio_county_2017-2019_grouped_bootstraps_1000_poverty.csv"))
 # sr <- vroom(here('data', 'output', "selection_ratio_county_2017-2019_grouped_bootstraps_1000_poverty_buying.csv"))
-sr <- vroom(here("data", "output", "selection_ratio_county_2017-2019_grouped_bootstraps_1000_poverty_buying_outside.csv"))
+# sr <- vroom(here("data", "misc", "county_coverage"))
 sc <- fips_codes %>%
   mutate(FIPS = glue("{state_code}{county_code}"))
 
@@ -255,11 +255,11 @@ sr <- vroom(here("data", "output", "selection_ratio_county_2010-2019_bootstraps_
 sr_arrest <- vroom(here("data", "output", "selection_ratio_county_2010-2019_bootstraps_1000_poverty_arrests.csv")) %>%
   distinct(arrests, FIPS, year)
 sr <- sr %>% inner_join(sr_arrest)
-nibrs <- vroom(here('data', 'output', 'cannabis_2010-2019_allincidents_summary.csv')) %>%
+nibrs <- vroom(here('data', 'NIBRS', 'raw', 'cannabis_allyears_allincidents.csv')) %>%
   filter(!other_offense) %>%
   filter(other_criminal_act_count == 0) %>%
   filter(cannabis_count > 0)
-lc <- vroom(here('data', 'output', 'LEAIC.tsv')) %>%
+lc <- vroom(here('data', 'misc', 'LEAIC.tsv')) %>%
   distinct(STATENAME, FIPS, ORI9) %>%
   rename(state = STATENAME)
 
@@ -305,11 +305,11 @@ total_n_counties <- sc %>%
 #'   ungroup %>%
 #'   # compute n of counties for each state (must be stable across years)
 #'   mutate(state_name = glue('{state_name} ({n_counties}/{total_n_counties} counties)')) %>%
-#'   pivot_longer(cols = c('log_incidents_per100k', 
+#'   pivot_longer(cols = c('log_incidents_per100k',
 #'                         #'log_arrests_per100k',
 #'                         'mean_log_selection_ratio'),
 #'                names_to = 'Variable', values_to = 'value')
-#'                
+
 sr_selected_counties <- sr %>%
   inner_join(sc) %>%
   #inner_join(legalised) %>%
@@ -342,23 +342,39 @@ incidents_by_month <- nibrs %>%
   inner_join(sr_selected_counties %>% distinct(FIPS)) %>% # only counties that have always reported
   rename(year = data_year) %>%
   group_by(year, FIPS, month_num) %>%
-  summarise(incidents = n()) %>%
+  summarise(incidents = n())
+
+arrests_by_month <- nibrs %>%
+  inner_join(sr_selected_counties %>% distinct(FIPS)) %>% # only counties that have always reported
+  rename(year = data_year) %>%
+  group_by(year, FIPS, month_num) %>%
+  filter(arrest_type_name != "No Arrest") %>%
+  summarise(arrests = n()) 
+
+incidents_by_month = incidents_by_month %>% left_join(arrests_by_month, by=c("year" = "year", "FIPS" = "FIPS", "month_num" = "month_num")) %>% replace(is.na(.), 0)
+
+incidents_by_month = incidents_by_month %>%
   inner_join(sc) %>%
   inner_join(sr %>% distinct(year, FIPS, frequency)) %>%
   group_by(year, state_name, month_num) %>%
-  summarise(log_incidents_per100k = log(sum(incidents) / sum(frequency) * 1e5)) %>%
+  summarise(log_incidents_per100k = log(sum(incidents) / sum(frequency) * 1e5), log_arrests_per100k = log(sum(arrests) / sum(frequency) * 1e5)) %>%
   inner_join(tb_plot_sr %>% distinct(state_name, state_name_wc))
-incidents_by_month
 
+glimpse(arrests_by_month)
 glimpse(incidents_by_month)
 glimpse(tb_plot_sr)
+
 incidents_by_month
+
 tb_plot <- tb_plot_sr %>%
   rename(value = mean_log_selection_ratio) %>%
   mutate(variable = 'mean_log_selection_ratio') %>%
   bind_rows(incidents_by_month %>%
               rename(value = log_incidents_per100k) %>%
               mutate(variable = 'log_incidents_per100k')) %>%
+  bind_rows(incidents_by_month %>%
+              rename(value = log_arrests_per100k) %>%
+              mutate(variable = 'arrest_rate')) %>%
   mutate(year_month = as.character(glue('{month_num}/01/{year}'))) %>%
   mutate(date = as.Date(year_month, format = '%m/%d/%Y'))
 
@@ -371,6 +387,7 @@ tb_plot %>%
   # plot
   mutate(variable = case_when(
     variable == 'log_incidents_per100k' ~ 'Log of monthly incidents per 100,000 people',
+    variable == 'arrest_rate' ~ 'Log of monthly arrests per 100,000 people',
     variable == 'mean_log_selection_ratio' ~ "Mean of log selection ratio weighted by the\ninverse of the relative standard deviation"
   )) %>%
   ggplot(aes(x = date, y = value, col = variable)) +
@@ -384,7 +401,7 @@ tb_plot %>%
   ylab("Mean log selection ratio") +
   facet_wrap(~state_name, ncol = 2) + 
   scale_x_continuous(breaks = seq(2010, 2018, by = 2)) + 
-  scale_color_manual(values = c("#D55E00", "#0072B2", 'forestgreen', 'darkred')) + 
+  scale_color_manual(values = c("#D55E00", "#0072B2", "black", 'forestgreen', 'darkred')) + 
   ylab('Value') + 
   theme(legend.position="bottom", legend.title = element_blank(), 
         legend.box="vertical") +
@@ -398,7 +415,7 @@ ggsave(here("scripts", "R", "plots", "sr_by_year_legalized.pdf"), height = 8, wi
 
 tb_plot %>%
  # filter(Variable == 'mean_log_selection_ratio') %>%
-  filter(Variable == 'log_incidents_per100k') %>%
+  filter(variable == 'log_incidents_per100k') %>%
   group_by(state_name) %>%
   summarise(out = list(lm(value ~ year) %>% tidy())) %>%
   unnest(out) %>%

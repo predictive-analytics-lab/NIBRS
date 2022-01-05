@@ -87,6 +87,7 @@ def incident_users(
 
     # census_df = census_df.merge(prob_dem, on=[resolution_dict[resolution], *vars])
 
+    breakpoint()
     census_df["users"] = census_df["frequency"] * census_df["MJ"] * 365.0
 
     # census_df["users_var"] = (census_df["prob_dem"] ** 2) * census_df["users"] * (census_df["prob_usage_one_dat_se"] ** 2) * 365.0
