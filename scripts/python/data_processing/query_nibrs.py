@@ -1,4 +1,5 @@
 from os import PathLike
+import re
 from typing import Generator, List, Optional
 import pandas as pd
 from pathlib import Path
@@ -6,7 +7,8 @@ from tqdm import tqdm
 from difflib import SequenceMatcher
 
 data_dir = Path(__file__).resolve().parents[3] / "data_downloading" / "downloads"
-output_dir = Path(__file__).resolve().parents[3] / "data" / "NIBRS"
+output_dir = Path(__file__).resolve().parents[3] / "data" / "NIBRS" / "raw"
+output_dir.mkdir(parents=True, exist_ok=True)
 
 
 def search_filename(name: str, dir: Path) -> Path:
@@ -22,8 +24,8 @@ def search_filename(name: str, dir: Path) -> Path:
 def query_one_state_year(
     year_dir: Path,
     summary: bool = False,
-    hispanics: bool = False,
-    all_incidents: bool = False,
+    # hispanics: bool = False,
+    # all_incidents: bool = False,
 ) -> pd.DataFrame:
     """Combine a single year-state combination into the desired df form."""
     if (subdir := year_dir / next(year_dir.iterdir())).is_dir():
@@ -161,7 +163,7 @@ def query_one_state_year(
             "drug_offense": "any",
             "drug_equipment_offense": "any",
             "other_offense": "any",
-            "location": lambda x: tuple(sorted(set(x))) if summary else tuple,
+            "location": (lambda x: tuple(sorted(set(x)))) if summary else tuple,
         }
     )
     criminal_act_df["criminal_act"] = criminal_act_df["criminal_act"].map(
@@ -213,18 +215,18 @@ def query_one_state_year(
         & (main_df["sex_code"].isin(["M", "F"]))
         & (~main_df["age_num"].isna())
         & (main_df["age_num"] > 11)
-        & (main_df["cannabis_count"] > 0)
+        # & (main_df["cannabis_count"] > 0)
         # (main_df['unique_drug_type_count'] == 1)
     ]
 
-    if not hispanics:
-        main_df = main_df[(main_df["ethnicity_id"] != 1)]
+    # if not hispanics:
+    #     main_df = main_df[(main_df["ethnicity_id"] != 1)]
 
-    if not all_incidents:
-        main_df = main_df[
-            (main_df["other_offense"] == False)
-            & (main_df["other_criminal_act_count"] == 0)
-        ]
+    # if not all_incidents:
+    #     main_df = main_df[
+    #         (main_df["other_offense"] == False)
+    #         & (main_df["other_criminal_act_count"] == 0)
+    #     ]
 
     main_df = main_df.drop(
         columns=[
@@ -232,7 +234,7 @@ def query_one_state_year(
             "offender_id",
             "incident_id",
             "race_id",
-            "ethnicity_id",
+            # "ethnicity_id",
             "nibrs_month_id",
         ]
     )
@@ -240,15 +242,21 @@ def query_one_state_year(
 
 
 def query_all(
-    downloads_dir: Path, all_incidents: bool, hispanics: bool, summary: bool = False
+    # downloads_dir: Path, all_incidents: bool, hispanics: bool, summary: bool = False
+    downloads_dir: Path, summary: bool = False
 ) -> pd.DataFrame:
     combined_df = pd.DataFrame()
+    years = set()
     for sy_dir in tqdm(list(downloads_dir.iterdir())):
+        if (year_match := re.search(r'\d+', sy_dir.stem)) is not None:
+            year = int(year_match.group())
+            years.add(year)
         df = query_one_state_year(
-            sy_dir, all_incidents=all_incidents, hispanics=hispanics, summary=summary
+            # sy_dir, all_incidents=all_incidents, hispanics=hispanics, summary=summary
+            sy_dir, summary=summary
         )
         combined_df = combined_df.append(df)
-    return combined_df
+    return combined_df, years
 
 
 if __name__ == "__main__":
@@ -262,26 +270,26 @@ if __name__ == "__main__":
         default=False,
         help="Flag indicating whether to produce an unfiltered dataset for computation of summary statistics. Default: False",
     )
-    parser.add_argument(
-        "--hispanics",
-        action="store_true",
-        default=False,
-        help="Flag indicating whether to include hispanics in the dataset. Default: False.",
-    )
-    parser.add_argument(
-        "--all_incidents",
-        action="store_true",
-        help="Flag whether to include incidents with more than JUST the drug offense.",
-    )
+    # parser.add_argument(
+    #     "--hispanics",
+    #     action="store_true",
+    #     default=False,
+    #     help="Flag indicating whether to include hispanics in the dataset. Default: False.",
+    # )
+    # parser.add_argument(
+    #     "--all_incidents",
+    #     action="store_true",
+    #     help="Flag whether to include incidents with more than JUST the drug offense.",
+    # )
 
     args = parser.parse_args()
-    df = query_all(
+    df, years = query_all(
         data_dir,
         summary=args.summary,
-        all_incidents=args.all_incidents,
-        hispanics=args.hispanics,
+        # all_incidents=args.all_incidents,
+        # hispanics=args.hispanics,
     )
 
-    options = f"{'_hispanics' if args.hispanics else ''}{'_all_incidents' if args.all_incidents else ''}{'_summary' if args.summary else ''}"
-
-    df.to_csv(output_dir / "raw" / f"cannabis_allyears_{options}.csv")
+    options = f"_{min(years)}-{max(years)}{'_summary' if args.summary else ''}"
+    # f"{'_hispanics' if args.hispanics else ''}{'_all_incidents' if args.all_incidents else ''}
+    df.to_csv(output_dir / f"drug_incidents{options}.csv")

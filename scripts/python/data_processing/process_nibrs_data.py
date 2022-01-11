@@ -8,26 +8,20 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 import argparse
-import glob
-import warnings
 from collections import Counter
 from ast import literal_eval as make_tuple
 from astral.sun import sunrise, sunset
 from astral import Observer
 from pytz import timezone
 import datetime
-from tqdm import tqdm
-import swifter
 
-data_path = Path(__file__).parent.parent.parent.parent / "data"
-data_name_drug_incidents = data_path / "NIBRS" / "raw" / "cannabis_allyears.csv"
-data_name_all_incidents = (
-    data_path / "NIBRS" / "raw" / "cannabis_allyears_allincidents.csv"
+data_dir = Path(__file__).parent.parent.parent.parent / "data"
+# data_path_drug_incidents = data_dir / "NIBRS" / "raw" / "drug_incidents_2010-2019.csv"
+data_path = (
+    data_dir / "NIBRS" / "raw" / "drug_incidents_2010-2019.csv"
 )
-data_name_hispanics = data_path / "NIBRS" / "raw" / "cannabis_allyears_hispanics.csv"
-fips_to_latlong = pd.read_csv(
-    data_path / "misc" / "us-county-boundaries-latlong.csv", dtype={"FIPS": str}
-)
+# data_name_hispanics = data_dir / "NIBRS" / "raw" / "drug_incidents_2010-2019_hispanics.csv"
+
 
 cols_to_use = [
     "race",
@@ -39,6 +33,7 @@ cols_to_use = [
     "location",
     "incident_hour",
     "incident_date",
+
 ]
 
 resolution_dict = {
@@ -119,6 +114,7 @@ def load_and_process_nibrs(
     all_incidents: bool = False,
     location: bool = False,
     time: str = "any",
+    drugs: str = "cannabis",
     time_type: str = "daylight",
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
@@ -141,12 +137,23 @@ def load_and_process_nibrs(
         except:
             print("invalid year format. Run appropriate SQL script.")
 
-    if all_incidents:
-        nibrs_df = pd.read_csv(data_name_all_incidents, usecols=cols_to_use)
-    elif hispanic:
-        nibrs_df = pd.read_csv(data_name_hispanics, usecols=cols_to_use)
+    nibrs_df = pd.read_csv(data_path)
+    if not hispanic:
+        nibrs_df = nibrs_df[(nibrs_df["ethnicity_id"] != 1)]
+
+    if drugs == "all":
+        drugs = ["crack", "cocaine", "heroin", "cannabis", "meth", "other_drugs"]
     else:
-        nibrs_df = pd.read_csv(data_name_drug_incidents, usecols=cols_to_use)
+        drugs = drugs.split(",")
+    drug_columns = [f"{drug}_count" for drug in drugs]
+    if not all_incidents:
+        # remove any rows with other criminal acts/offenses
+        nibrs_df = nibrs_df[
+            (nibrs_df["other_offense"] == False)
+            & (nibrs_df["other_criminal_act_count"] == 0)
+        ]
+    # for all incidents we keep any row where some of any listed drug is found
+    nibrs_df = nibrs_df[nibrs_df[drug_columns].sum(axis=1) > 0]
 
     nibrs_df = nibrs_df[nibrs_df.data_year.isin(years)]
 
@@ -163,7 +170,7 @@ def load_and_process_nibrs(
     )
 
     fips_ori_df = pd.read_csv(
-        data_path / "misc" / "LEAIC.tsv",
+        data_dir / "misc" / "LEAIC.tsv",
         delimiter="\t",
         usecols=["ORI9", "FIPS"],
         dtype={"FIPS": object},
@@ -172,13 +179,16 @@ def load_and_process_nibrs(
     fips_ori_df = fips_ori_df.rename(columns={"ORI9": "ori"})
 
     subregion_df = pd.read_csv(
-        data_path / "misc" / "subregion_counties.csv",
+        data_dir / "misc" / "subregion_counties.csv",
         dtype={"FIPS": object},
         usecols=["State", "Region", "FIPS"],
     )
 
     nibrs_df = pd.merge(nibrs_df, fips_ori_df, on="ori")
 
+    fips_to_latlong = pd.read_csv(
+        data_dir / "misc" / "us-county-boundaries-latlong.csv", dtype={"FIPS": str}
+    )
     nibrs_df = nibrs_df.merge(fips_to_latlong, how="left", on="FIPS")
 
     nibrs_df["incident_date"] = pd.to_datetime(nibrs_df["incident_date"])
@@ -254,15 +264,20 @@ def load_and_process_nibrs(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--year", help="year, or year range.", default="2019")
+    parser.add_argument(
+        "--year",
+        help="year, or year range.",
+        type=str,
+        default="2019")
     parser.add_argument(
         "--resolution",
         help="Geographic resolution to aggregate incidents over.",
+        type=str,
         default="state",
     )
     parser.add_argument(
         "--all_incidents",
-        help="Geographic resolution to aggregate incidents over.",
+        help="Whether to include incidents with more than JUST the drug offense.",
         default=False,
         action="store_true",
     )
@@ -296,6 +311,14 @@ if __name__ == "__main__":
         help="""The type of time to use. Options are: simple which uses 6am-8pm inclusive, and daylight which assigns day/night based on whether it is light. Default: simple.""",
         default="simple",
     )
+    parser.add_argument(
+        "--drugs",
+        help="""Which drug(s) to include; 'all' or comma separated list from
+        crack,cocaine,heroin,cannabis,meth
+        only cannabis by default.""",
+        type=str,
+        default="cannabis"
+    )
 
     args = parser.parse_args()
 
@@ -307,9 +330,13 @@ if __name__ == "__main__":
         arrests=args.arrests,
         location=args.location,
         time=args.time,
+        drugs=args.drugs,
     )
-    year = args.year if args.year else "2019"
-    if args.arrests:
-        df.to_csv(data_path / "NIBRS" / f"arrests_{year}.csv")
-    else:
-        df.to_csv(data_path / "NIBRS" / f"incidents_{year}.csv")
+    file_name = ("drugs:" + args.drugs
+    + "_resolution:" + args.resolution
+    + ("_arrests" if args.arrests else "")
+    + ("_all-incidents" if args.all_incidents else "")
+    + ("_location" if args.location else "")
+    + "_" + args.year
+    + ".csv")
+    df.to_csv(data_dir / "NIBRS" / file_name)
