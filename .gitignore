@@ -152,3 +152,6 @@ Scripts/R/*.csv
 .Rproj.user
 
 Scripts/R/downloaded_data
+
+# macos stuff
+.DS_Store
