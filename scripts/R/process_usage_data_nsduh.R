@@ -1,4 +1,4 @@
-renv::restore()
+# renv::restore()
 
 args <- commandArgs(trailingOnly = TRUE)
 
@@ -124,6 +124,10 @@ cols_to_keep <- c(
                   "DRVALDR",
                   "DRVDONLY",
                   "DRVAONLY",
+                  "CRKUS30A",
+                  "COCUS30A",
+                  "HER30USE",
+                  "METHAM30N",
                   # "DRVINALCO",
                   # "DRVINMARJ",
                   # "DRVINCOCN",
@@ -200,7 +204,7 @@ df <- df %>%
     usage_agefirsttime = case_when(
       MJAGE >= 1 & MJAGE <= 82 ~ MJAGE,
       MJAGE == 991 ~ 0
-    ),
+    ), # ---------- MARIJUANA ----------
     days_bought_marijuana = case_when(
       MMBT30DY >= 1 & MMBT30DY <= 30 ~ MMBT30DY,
       MMBT30DY == 91 | MMBT30DY == 93 | MMBT30DY == 99 ~ 0
@@ -216,6 +220,26 @@ df <- df %>%
     days_traded_marijuana_outside = case_when(
       MMT30FRQ >= 1 & MMT30FRQ <= 30 & MMBPLACE != 4 ~ MMBT30DY,
       MMT30FRQ == 91 | MMT30FRQ == 93 | MMT30FRQ == 99 ~ 0
+    ), # ---------- CRACK ----------
+    crack_usage = case_when(
+      CRKUS30A <= 30 ~ CRKUS30A,
+      CRKUS30A == 91 | CRKUS30A == 93 ~ 0
+      # the remaining codes categorized as NAs
+    ), # --------- COCAINE -----------
+    cocaine_usage = case_when(
+      COCUS30A <= 30 ~ COCUS30A,
+      COCUS30A == 91 | COCUS30A == 93 ~ 0
+      # the remaining codes categorized as NAs
+    ), # --------- HEROIN -----------
+    heroin_usage = case_when(
+      HER30USE <= 30 ~ HER30USE,
+      HER30USE == 91 | HER30USE == 93 ~ 0
+      # the remaining codes categorized as NAs
+    ), # --------- METH -----------
+    metham_usage = case_when(
+      METHAM30N <= 30 ~ METHAM30N,
+      METHAM30N == 91 | METHAM30N == 93 ~ 0
+      # the remaining codes categorized as NAs
     ),
     drunk_past_year = case_when(
       ALCPDANG == 1 | ALCSERPB == 1~ 1,
@@ -303,7 +327,12 @@ stats_df <- df_srv %>%
      mean_traded_outside_day = survey_mean(days_traded_marijuana_outside/30,
                                             na.rm = TRUE),
      perc_drunk_past_year = survey_mean(drunk_past_year, na.rm = TRUE),
-     dui_past_year = survey_mean(dui_past_year, na.rm = TRUE)
+     dui_past_year = survey_mean(dui_past_year, na.rm = TRUE),
+     mean_crack_day = survey_mean(crack_usage / 30 , na.rm = TRUE),
+     mean_cocaine_day = survey_mean(cocaine_usage / 30 , na.rm = TRUE),
+     mean_heroin_day = survey_mean(heroin_usage / 30 , na.rm = TRUE),
+     mean_metham_day = survey_mean(metham_usage / 30 , na.rm = TRUE),
+     
    )
 
 dir.create(here('scripts', 'R', 'downloaded_data', 'nsduh'))

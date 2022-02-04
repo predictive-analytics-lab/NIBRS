@@ -28,35 +28,43 @@ def remove_nonsense(df):
     return df
 
 
-if __name__ == "__main__":
-    poverty = pd.read_csv(
+def main(base_path, comp_path, base_name, comp_name):
+    base = pd.read_csv(
         output_path
-        / "selection_ratio_county_2017-2019_grouped_bootstraps_1000_poverty.csv"
+        / base_path
     )
 
-    poverty = remove_nonsense(poverty)
+    base = remove_nonsense(base)
 
-    purchase_public = pd.read_csv(
+    comparitor = pd.read_csv(
         output_path
-        / "selection_ratio_county_2017-2019_grouped_bootstraps_1000_poverty_buying_outside.csv"
+        / comp_path
     )
 
-    purchase_public = remove_nonsense(purchase_public)
+    comparitor = remove_nonsense(comparitor)
 
-    pov_value = n_counties_condition(poverty, "selection_ratio")
-    pov_95 = n_counties_condition(poverty, "lb")
+    base_value = n_counties_condition(base, "selection_ratio")
+    base_95 = n_counties_condition(base, "lb")
 
-    pur_value = n_counties_condition(purchase_public, "selection_ratio")
-    pur_95 = n_counties_condition(purchase_public, "lb")
+    comp_value = n_counties_condition(comparitor, "selection_ratio")
+    comp_95 = n_counties_condition(comparitor, "lb")
 
     result = pd.DataFrame(
-        [pov_value, pov_95, pur_value, pur_95],
+        [base_value, base_95, comp_value, comp_95],
         columns=["ER < 0.8", "ER > 1.25", "ER > 2", "ER > 5"],
         index=[
-            "Usage Value",
-            "Usage 95% Conf.",
-            "Purchase Public Value",
-            "Purchase Public 95% Conf.",
+            f"{base_name} Value",
+            f"{base_name} 95% Conf.",
+            f"{comp_name} Value",
+            f"{comp_name} 95% Conf.",
         ],
     )
-    result.to_csv(output_path / "table_2.csv")
+    result.to_csv(output_path / "table_2_crack.csv")
+
+if __name__ == "__main__":
+    main(
+        "selection_ratio_county_2017-2019_grouped_bootstraps_1000_poverty.csv", 
+        "selection_ratio_county_2017-2019_grouped_bootstraps_1000_crack.csv",
+        "Cannabis",
+        "Crack"
+    )

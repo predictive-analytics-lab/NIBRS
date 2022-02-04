@@ -35,6 +35,10 @@ target_variables = {
     "traded_outside": ["mean_traded_outside_day", "mean_traded_outside_day_se"],
     "dui": ["dui_past_year", "dui_past_year_se"],
     "drunkeness": ["drunkeness_past_year", "drunkeness_past_year_se"],
+    "cocaine": ["mean_cocaine_day", "mean_cocaine_day_se"],
+    "heroin": ["mean_heroin_day", "mean_heroin_day_se"],
+    "crack": ["mean_crack_day", "mean_crack_day_se"],
+    "meth": ["mean_metham_day", "mean_metham_day_se"],
 }
 
 var_names = ["MJ", "MJ_SE"]
@@ -54,6 +58,10 @@ def get_nsduh_data(
         "dui",
         "drunkeness",
         "ucr_possesion",
+        "cocaine",
+        "crack",
+        "meth",
+        "heroin",
     ] = "using",
 ):
     if target == "ucr_possesion":
@@ -73,7 +81,7 @@ def get_nsduh_data(
         df = df.rename({"is_metro": "metrocounty"}, axis=1)
         vars_to_keep.insert(3, "metrocounty")
 
-    if target == "using":
+    if target in ["using", "cocaine", "crack", "meth", "heroin"]:
         df = df[df.year.isin(years)]
     else:
         yintersect = set(years).intersection({2015, 2016, 2017})
@@ -106,7 +114,7 @@ if __name__ == "__main__":
         "--target",
         type=str,
         help="""The target to use, options are: 
-        using, buying, buying_outside, traded, traded_outside""",
+        using, buying, buying_outside, traded, traded_outside, dui, drunkeness, crack, cocaine, meth, heroin""",
         default="using",
     )
     parser.add_argument(

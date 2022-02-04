@@ -87,7 +87,6 @@ def incident_users(
 
     # census_df = census_df.merge(prob_dem, on=[resolution_dict[resolution], *vars])
 
-    breakpoint()
     census_df["users"] = census_df["frequency"] * census_df["MJ"] * 365.0
 
     # census_df["users_var"] = (census_df["prob_dem"] ** 2) * census_df["users"] * (census_df["prob_usage_one_dat_se"] ** 2) * 365.0
@@ -291,6 +290,8 @@ def load_datasets(
     census_df = get_census_data(years=years, poverty=poverty, metro=metro)
     nsduh_df = get_nsduh_data(years=years, poverty=poverty, metro=metro, target=target)
     if target not in ["dui", "drunkeness", "ucr_possesion"]:
+        cannabis_targets = ["using", "buying", "buying_outside", "trading", "trading_outside"]
+        drug_type = "cannabis" if target in cannabis_targets else target
         nibrs_df = load_and_process_nibrs(
             years=years,
             resolution=resolution,
@@ -299,6 +300,7 @@ def load_datasets(
             time=time,
             time_type=time_type,
             hispanic=hispanics,
+            drugs=drug_type
         )
     else:
         nibrs_df = get_ucr_data(years=years, target=target)
@@ -652,7 +654,7 @@ if __name__ == "__main__":
         "--target",
         type=str,
         help="""The target to use, options are: 
-        using, buying, buying_outside, traded, traded_outside, dui, drunkeness, ucr_possesion""",
+        using, buying, buying_outside, traded, traded_outside, dui, drunkeness, ucr_possesion, crack, cocaine, heroin, meth""",
         default="using",
     )
     parser.add_argument(
