@@ -1,5 +1,5 @@
 outs:
-- md5: d751713988987e9331980363e24189ce.dir
-  size: 0
-  nfiles: 0
+- md5: 85d7705ba93a337ecd0345661b7ad41e.dir
+  size: 47620776
+  nfiles: 9
   path: choropleths

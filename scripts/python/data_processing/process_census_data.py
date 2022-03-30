@@ -156,7 +156,7 @@ def load_and_process_census_data(years: Union[str, List[str]]) -> pd.DataFrame:
 
     # LOAD DATA
     df = pd.read_csv(
-        data_path / "census" / f"census-2019-county.csv",
+        data_path / "census" / f"census-2020-county.csv",
         encoding="ISO-8859-1",
         index_col=False,
         engine="python",
@@ -176,6 +176,8 @@ def load_and_process_census_data(years: Union[str, List[str]]) -> pd.DataFrame:
     # FILTER YEARS
     df = df[disjunction(*[df.YEAR == yi for yi in years])]
 
+
+
     df = pd.melt(
         df,
         id_vars=["AGEGRP", "COUNTY", "STATE", "YEAR"],
@@ -183,6 +185,8 @@ def load_and_process_census_data(years: Union[str, List[str]]) -> pd.DataFrame:
         var_name="RACESEX",
         value_name="frequency",
     )
+
+
 
     df["SEX"] = df.apply(SEX, axis=1)
     df["RACE"] = df.apply(RACE, axis=1)
@@ -199,7 +203,7 @@ def load_and_process_census_data(years: Union[str, List[str]]) -> pd.DataFrame:
 
     df = df.drop(["AGEGRP", "RACESEX"], axis=1)
 
-    df.frequency /= 4
+    df["frequency"] = df.frequency.astype(float) / 4
 
     def age_lowerbound(x):
         return int(x["AGE"].split("-")[0].split("+")[0])

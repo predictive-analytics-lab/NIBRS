@@ -59,12 +59,12 @@ def main(base_path, comp_path, base_name, comp_name):
             f"{comp_name} 95% Conf.",
         ],
     )
-    result.to_csv(output_path / "table_2_crack.csv")
+    result.to_csv(output_path / "table_2_meth.csv")
 
 if __name__ == "__main__":
     main(
         "selection_ratio_county_2017-2019_grouped_bootstraps_1000_poverty.csv", 
-        "selection_ratio_county_2017-2019_grouped_bootstraps_1000_crack.csv",
+        "selection_ratio_county_2017-2019_grouped_bootstraps_1000_meth.csv",
         "Cannabis",
-        "Crack"
+        "Methamphetamines",
     )

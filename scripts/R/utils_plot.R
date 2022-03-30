@@ -16,6 +16,24 @@ map_to_colors <- function(quartile_alpha, sr_binned){
   return(letters[code])
 }
 
+map_to_colors_er <- function(quartile_alpha, sr_binned){
+  pos_quartile <- case_when(
+    quartile_alpha == 0.25 ~ 0,
+    quartile_alpha == 0.5 ~ 1,
+    quartile_alpha == 0.75 ~ 2,
+    quartile_alpha == 1 ~ 3
+  )
+  pos_sr_binned <- case_when(
+    sr_binned == "E < -9.5" ~ 4 * 4 + 1,
+    sr_binned == "-9.5\u2264 E < -9" ~ 4 * 3 + 1,
+    sr_binned == "-9 \u2264 E < -8.5" ~ 4 * 2 + 1,
+    sr_binned == "-8.5 \u2264 E < -8" ~ 4 + 1,
+    sr_binned == "E \u2265 -8" ~ 1
+  )
+  code <- pos_quartile + pos_sr_binned
+  return(letters[code])
+}
+
 assign_quartile <- function(x, quartiles){
   x <- case_when(
     x > quartiles[3] ~ 4,

@@ -18,7 +18,7 @@ import datetime
 data_dir = Path(__file__).parent.parent.parent.parent / "data"
 # data_path_drug_incidents = data_dir / "NIBRS" / "raw" / "drug_incidents_2010-2019.csv"
 data_path = (
-    data_dir / "NIBRS" / "raw" / "drug_incidents_2010-2019.csv"
+    data_dir / "NIBRS" / "raw" / "drug_incidents_2010-2020.csv"
 )
 # data_name_hispanics = data_dir / "NIBRS" / "raw" / "drug_incidents_2010-2019_hispanics.csv"
 
@@ -142,7 +142,7 @@ def load_and_process_nibrs(
         nibrs_df = nibrs_df[(nibrs_df["ethnicity_id"] != 1)]
 
     if drugs == "all":
-        drugs = ["crack", "cocaine", "heroin", "cannabis", "meth", "other_drugs"]
+        drugs = ["crack", "cocaine", "heroin", "cannabis"]
     else:
         drugs = drugs.split(",")
     drug_columns = [f"{drug}_count" for drug in drugs]

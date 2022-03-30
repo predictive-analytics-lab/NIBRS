@@ -250,15 +250,15 @@ ggplot(
 
 # figure 3 ----
 
-sr <- vroom(here("data", "output", "selection_ratio_county_2010-2019_bootstraps_1000_poverty.csv")) %>%
+sr <- vroom(here("data", "output", "selection_ratio_county_2010-2020_bootstraps_1000_crack.csv")) %>%
   mutate(rel_err = abs(log(selection_ratio) / sqrt(var_log)))
-sr_arrest <- vroom(here("data", "output", "selection_ratio_county_2010-2019_bootstraps_1000_poverty_arrests.csv")) %>%
+sr_arrest <- vroom(here("data", "output", "selection_ratio_county_2010-2020_bootstraps_1000_crack_arrests.csv")) %>%
   distinct(arrests, FIPS, year)
 sr <- sr %>% inner_join(sr_arrest)
-nibrs <- vroom(here('data', 'NIBRS', 'raw', 'cannabis_allyears_allincidents.csv')) %>%
+nibrs <- vroom(here('data', 'NIBRS', 'raw', 'drug_incidents_2010-2020.csv')) %>%
   filter(!other_offense) %>%
   filter(other_criminal_act_count == 0) %>%
-  filter(cannabis_count > 0)
+  filter(crack_count > 0)
 lc <- vroom(here('data', 'misc', 'LEAIC.tsv')) %>%
   distinct(STATENAME, FIPS, ORI9) %>%
   rename(state = STATENAME)
@@ -316,7 +316,7 @@ sr_selected_counties <- sr %>%
   #mutate(year_shift = year - year_legal) %>%
   group_by(FIPS) %>%
   mutate(years_reporting = length(unique(year))) %>%
-  filter(years_reporting == 10)
+  filter(years_reporting >= 10)
 tb_plot_sr <- sr_selected_counties %>%
   group_by(year, state_name) %>%
   summarise(
@@ -342,7 +342,7 @@ incidents_by_month <- nibrs %>%
   inner_join(sr_selected_counties %>% distinct(FIPS)) %>% # only counties that have always reported
   rename(year = data_year) %>%
   group_by(year, FIPS, month_num) %>%
-  summarise(incidents = n())
+  summarise(incidents = n()) 
 
 arrests_by_month <- nibrs %>%
   inner_join(sr_selected_counties %>% distinct(FIPS)) %>% # only counties that have always reported

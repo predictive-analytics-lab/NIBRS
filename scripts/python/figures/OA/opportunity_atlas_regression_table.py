@@ -7,7 +7,7 @@ from patsy import dmatrices
 import seaborn as sns
 from matplotlib import pyplot as plt
 
-data_path = Path(__file__).parents[3] / "data" / "correlates"
+data_path = Path(__file__).parents[4] / "data" / "correlates"
 
 
 def _load_and_munge(file: Path, name: str) -> pd.DataFrame:
@@ -255,6 +255,8 @@ pivot_df = pivot_df.loc[correlate_order]
 
 pivot_df = pivot_df.rename(name_conv, axis=0)
 pivot_df = pivot_df.rename(model_conv, axis=1)
+
+print(pivot_df.to_latex())
 
 pivot_df.to_csv(data_path / "OA_coef_pivot.csv")
 df.to_csv(data_path / "OA_processed.csv")

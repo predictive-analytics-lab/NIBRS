@@ -88,7 +88,7 @@ def coverage(agency_df: pd.DataFrame) -> pd.DataFrame:
 
 
 if __name__ == "__main__":
-    df = combine_agencies([str(x) for x in range(2012, 2020)])
+    df = combine_agencies([str(x) for x in range(2012, 2021)])
     county_coverage = coverage(df)
     df.to_csv(data_path / "misc" / "agencies.csv")
     county_coverage.to_csv(data_path / "misc" / "county_coverage.csv")

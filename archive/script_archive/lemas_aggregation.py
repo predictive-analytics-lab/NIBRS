@@ -7,11 +7,7 @@ import numpy as np
 
 data_path = Path(__file__).parent.parent.parent / "data"
 
-agency_lemas = pd.read_csv(data_path / "output" / "agency_lemas.csv", index_col=0)
-
 lemas_columns = [
-    "ISSU_ADDR_BIAS",
-    "ISSU_ADDR_DRUG_ENF",
     "PERS_EDU_MIN",
     "PERS_MIL",
     "PERS_CITZN",
@@ -98,41 +94,25 @@ lemas_columns = [
     "ISSU_ADDR_DRUG_ENF",
 ]
 
+agency_lemas = pd.read_csv(data_path / "output" / "agency_lemas.csv", dtype={"FIPS": str}, usecols=lemas_columns + ["FIPS", "population"])
 # %%
 
 binary_columns = set(agency_lemas[lemas_columns].columns[[agency_lemas[lemas_columns].nunique() <=5]])
-cont_columns = set(agency_lemas[lemas_columns].columns[[agency_lemas[lemas_columns].nunique() >= 10]]).union({"bwratio"})
-categorical_columns = set(lemas_columns) - binary_columns - cont_columns
-special_columns = {"incidents", "population", "selection_ratio"}
+cont_columns = set(agency_lemas[lemas_columns].columns[[agency_lemas[lemas_columns].nunique() >= 10]])
+categorical_columns = set(lemas_columns) - binary_columns - cont_columns - {"FIPS", "population"}
 # %%
 
-binary_conversion_5 = {
-    1: 1,
-    2: 1,
-    -88: 0,
-    -9: -1,
-    -8: -1
-}
-
-binary_conversion_4 = {
-    1: 1,
-    2: 0,
-    -9: -1,
-    -8: -1
-}
-
 def binary_convert(r):
-    r = list(r.values)
-    if -88 in r:
-        return list(map(binary_conversion_5.get, r))
-    else:
-        return list(map(binary_conversion_4.get, r))
+    r.loc[r == 1] = "_yes"
+    r.loc[r == 2] = "_no"
+    r.loc[r == -88] = "_no"
+    r.loc[r == -9] = np.nan
+    r.loc[r == -8] = np.nan
+    return r
 
 def cont_convert(r):
-    r = list(r.values)
-    return [np.max([-1, ri]) for ri in r]
-
-
+    r.loc[r < 0] = np.nan
+    return r
 
 for col in binary_columns:
     agency_lemas[col] = binary_convert(agency_lemas[col])
@@ -144,33 +124,33 @@ for col in cont_columns:
 # %%
 
 issu_addr_dict = {
-    1: 1,
-    2: 1,
-    3: 2,
-    4: 3,
-    5: 3,
-    -9: -1
+    1: "_personnel",
+    2: "_personnel",
+    3: "_addressed",
+    4: "_not_addressed",
+    5: "_not_a_problem",
+    -9: np.nan
 }
 
 chief_race_dict = {
-    1: 1,
-    2: 2,
-    3: 3,
-    4: 4,
-    5: 4,
-    6: 4,
-    7: 4, 
-    8: 4,
-    -9: -1
+    1: "_white",
+    2: "_black",
+    3: "_hispanic",
+    4: "_other",
+    5: "_other",
+    6: "_other",
+    7: "_other", 
+    8: "_other",
+    -9: np.nan
 }
 
 edu_dict = {
-    1: 1,
-    2: 1,
-    3: 1,
-    4: 2,
-    5: 3,
-    -9: -1
+    1: "_college",
+    2: "_college",
+    3: "_college",
+    4: "_high-school",
+    5: "_none",
+    -9: np.nan
 }
 
 agency_lemas["ISSU_ADDR_BIAS"] = agency_lemas["ISSU_ADDR_BIAS"].map(issu_addr_dict.get)
@@ -183,24 +163,24 @@ agency_lemas["PERS_EDU_MIN"] = agency_lemas["PERS_EDU_MIN"].map(edu_dict.get)
 # %%
 
 def continuous_aggregation(x: pd.DataFrame, column: str):
-    x = x[x[column] > 0]
+    denom = x.population[x[column] != "_missing"].sum()
+    if denom == 0:
+        weight_mult = 1
+    else:
+        weight_mult = x.population.sum() / denom
+    weight = (((x.population / x.population.sum())[x[column] != "_missing"]) * weight_mult)[x[column] != "_missing"]
+    x = x[x[column] != "_missing"]
     # x = x[~x[column].isna()]
-    prop_pop = x.population / x.population.sum()
-    return (x[column] * prop_pop).sum()
+    if len(x) <= 0:
+        return np.nan
+    return round((x[column] * weight).sum())
+
 
 
 def categorical_aggregation(x: pd.DataFrame, column: str):
-    x = x[x[f"{column}_-1.0"].astype(int) != 1]
     matching_cols = [col for col in x if col.startswith(column)]
-    # x = x[x[matching_cols].sum(axis=1) > 0]
     prop_pop = x.population / x.population.sum()
     return (x[matching_cols].mul(prop_pop.values, axis=0)).sum(axis=0)
-
-def weighted_std(x: pd.DataFrame, column: str):
-    prop_pop = x.population / x.population.sum()
-    average = np.average(x[column], weights=prop_pop)
-    return np.sqrt(np.average((x[column]-average)**2, weights=prop_pop))
-
 
 def aggregate_columns(group: pd.DataFrame):
     output = pd.DataFrame()
@@ -209,74 +189,21 @@ def aggregate_columns(group: pd.DataFrame):
     for col in categorical_columns.union(binary_columns):
         cat_output = categorical_aggregation(group, col)
         output = pd.concat([output, pd.DataFrame([cat_output])], axis=1)
-    for col in special_columns:
-        if col == "incidents":
-            output[col] = group[col].sum()
-        if col == "population":
-            output["population_covered"] = group[col].sum()
-        if col == "selection_ratio":
-            output[col] = continuous_aggregation(group, col)
-            output["selection ratio std"] = weighted_std(group, col)
     return output
 
 
 # %%
-from functools import partial
+
+from tqdm.notebook import tqdm
+tqdm.pandas()
 
 
-def waverage(x: pd.DataFrame, column: str, weighting_column: str):
-    weight = x[weighting_column] / x[weighting_column].sum()
-    return (x[column] * weight).sum()
-    
-def wstd(x: pd.DataFrame, column: str, weighting_column: str):
-    weight = x[weighting_column] / x[weighting_column].sum()
-    average = np.average(x[column], weights=weight)
-    return np.sqrt(np.average((x[column]-average)**2, weights=weight))
+def aggregate(df: pd.DataFrame):
+    df = df.fillna(value=np.nan)
+    df.loc[:, lemas_columns] = df.loc[:, lemas_columns].fillna(value="_missing")
+    agency_lemas_1hot = pd.get_dummies(df, columns=list(categorical_columns.union(binary_columns)))
+    agency_lemas_1hot = agency_lemas_1hot.groupby("FIPS").progress_apply(aggregate_columns)
+    return agency_lemas_1hot
 
-def selection_aggregation(group: pd.DataFrame):
-    output = pd.DataFrame()
-    output["nibrs_selection_pop"] = [waverage(group, column="selection_ratio", weighting_column="population")]
-    output["nibrs_selection_inc"] = [waverage(group, column="selection_ratio", weighting_column="incidents")]
-    output["nibrs_selection_pop_std"] = [wstd(group, column="selection_ratio", weighting_column="population")]
-    output["nibrs_selection_inc_std"] = [wstd(group, column="selection_ratio", weighting_column="incidents")]
-    return output
-
-def agency_resolution(resolution: str):
-    agency_lemas_filtered = agency_lemas[agency_lemas.incidents > 0]
-    nibrs_incidents = agency_lemas_filtered.groupby(resolution)["incidents"].sum().to_frame("nibrs_incidents").reset_index()
-    
-    nibrs_selection_pop = agency_lemas_filtered.groupby(resolution).apply(selection_aggregation)
-        
-    agency_lemas_filtered = agency_lemas_filtered[agency_lemas_filtered["PERS_EDU_MIN"].notna()]
-    agency_lemas_1hot = pd.get_dummies(agency_lemas_filtered, columns=list(categorical_columns.union(binary_columns)))
-    agency_lemas_1hot = agency_lemas_1hot.groupby(resolution).apply(aggregate_columns)
-    columns_to_drop = [column for column in agency_lemas_1hot.columns if column.endswith("-1.0")]
-    agency_lemas_1hot = agency_lemas_1hot.drop(columns_to_drop, axis=1)
-    agency_lemas_1hot["population_covered_proportion"] = (agency_lemas_1hot.groupby(resolution)["population_covered"].sum() / agency_lemas.groupby(resolution)["population"].sum()).dropna().values
-    agency_lemas_1hot = agency_lemas_1hot.reset_index().drop(["level_1"], axis=1)
-    agency_lemas_1hot = pd.merge(agency_lemas_1hot, nibrs_incidents, on=resolution)
-    
-    agency_lemas_1hot = pd.merge(agency_lemas_1hot, nibrs_selection_pop, on=resolution)
-
-    agency_lemas_1hot.to_csv(data_path / "output" / f"aggregated_lemas_{resolution}.csv")
-
+output = aggregate(agency_lemas)
 # %%
-
-agency_resolution("State")
-# agency_resolution("state_region")
-# agency_resolution("FIPS")
-
-
-# %%
-
-# Coverage Percentage - DONE
-# Drop missing stuff - DONE
-# Create map(s) with STD
-# Generate report
-
-
-# NIBRS MAP - BIAS (+ STD), NIBRS Coverage
-
-
-# Selection ratio weighted by Incidents
-# Selection ratio without dropping lemas

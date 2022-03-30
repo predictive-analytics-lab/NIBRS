@@ -72,7 +72,6 @@ def incident_users(
     if years:
         vars += ["year"]
     # 30053
-
     census_df = census_df[
         census_df[resolution_dict[resolution]].isin(
             nibrs_df[resolution_dict[resolution]]
@@ -80,13 +79,12 @@ def incident_users(
     ]
     census_df = census_df[vars + ["frequency", resolution_dict[resolution]]]
     census_df = census_df.drop_duplicates()
-
     census_df = census_df.merge(nsduh_df, on=vars, how="left")
 
     # prob_dem = (census_df.groupby([*vars, resolution_dict[resolution]]).frequency.sum() / census_df.groupby(["race", resolution_dict[resolution]]).frequency.sum()).to_frame("prob_dem").reset_index()
 
     # census_df = census_df.merge(prob_dem, on=[resolution_dict[resolution], *vars])
-
+    
     census_df["users"] = census_df["frequency"] * census_df["MJ"] * 365.0
 
     # census_df["users_var"] = (census_df["prob_dem"] ** 2) * census_df["users"] * (census_df["prob_usage_one_dat_se"] ** 2) * 365.0
@@ -170,6 +168,8 @@ def selection_ratio(incident_user_df: pd.DataFrame, wilson: bool) -> pd.DataFram
         (
             incident_user_df["selection_ratio"],
             incident_user_df["ci"],
+            incident_user_df["ber_error"],
+            incident_user_df["wer_error"],
         ) = incident_user_df.result.str
     else:
         incident_user_df["selection_ratio"] = incident_user_df.apply(
@@ -343,10 +343,10 @@ def wilson_selection(n_s_1, n_1, n_s_2, n_2) -> Tuple[float, float]:
     p2, e2 = wilson_error(n_s_2, n_2)
     sr = p1 / p2
     ci = np.sqrt((e1 / p1) ** 2 + (e2 / p2) ** 2) * sr
-    return sr, ci
+    return sr, ci, e1, e2
 
 
-def bootstrap_selection(incident_users_df: pd.DataFrame, bootstraps: int):
+def bootstrap_selection(incident_users_df: pd.DataFrame, bootstraps: int, resolution: str) -> pd.DataFrame:
     def _sample_incidents(prob, trials, bootstraps: int, seed: int) -> int:
         prob = np.min([prob, 1])
         np.random.seed(seed)
@@ -355,6 +355,7 @@ def bootstrap_selection(incident_users_df: pd.DataFrame, bootstraps: int):
         else:
             successes = np.nan
         return successes
+    
 
     black_count = []
     white_count = []
@@ -396,7 +397,7 @@ def bootstrap_selection(incident_users_df: pd.DataFrame, bootstraps: int):
         )
     return incident_users_df.reset_index()[
         [
-            "FIPS",
+            resolution_dict[resolution],
             "selection_ratio",
             "lb",
             "ub",
@@ -518,7 +519,7 @@ def main(
             elif ci == "wilson":
                 temp_df = selection_ratio(incident_users_df, wilson=True)
             else:
-                temp_df = bootstrap_selection(incident_users_df, bootstraps)
+                temp_df = bootstrap_selection(incident_users_df, bootstraps, resolution)
                 temp_df = delta_method(temp_df)
 
             if not ucr:
@@ -529,7 +530,7 @@ def main(
                 #### END ###
         else:
             temp_df = incident_users_df.copy()
-
+        
         temp_df["year"] = yi
         selection_bias_df = selection_bias_df.append(temp_df.copy())
 

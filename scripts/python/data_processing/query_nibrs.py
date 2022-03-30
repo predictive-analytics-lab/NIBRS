@@ -87,11 +87,11 @@ def query_one_state_year(
     #     'drug_equipment_value': "sum",
     #     'property_count': "sum"
     # })
-    drug_property_df = read_csv(
-        "property", usecols=["property_id", "incident_id"]
-    ).merge(
+    drug_property_df = read_csv("property", usecols=["property_id", "incident_id"]).merge(
         read_csv("suspected_drug", usecols=["property_id", "suspected_drug_type_id"])
     )
+    if len(drug_property_df) == 0:
+        return
     drugs = ["crack", "cocaine", "heroin", "cannabis", "meth"]
     drug_ids = [1, 2, 4, 5, 12]
     for drug, id in zip(drugs, drug_ids):
@@ -255,7 +255,8 @@ def query_all(
             # sy_dir, all_incidents=all_incidents, hispanics=hispanics, summary=summary
             sy_dir, summary=summary
         )
-        combined_df = combined_df.append(df)
+        if df is not None:
+            combined_df = combined_df.append(df)
     return combined_df, years
 
 

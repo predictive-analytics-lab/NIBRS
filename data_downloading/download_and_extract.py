@@ -69,7 +69,7 @@ state_abbreviations = [
 
 
 def download_data():
-    years = range(2010, 2020)
+    years = [2020]
     states = state_abbreviations
     download_location = Path(__file__).parent / "downloads"
     for year in years:

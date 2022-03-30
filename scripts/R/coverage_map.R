@@ -7,7 +7,7 @@ library(viridis)
 source(here("scripts", "R", "utils_plot.R"))
 
 cc <- vroom(here("data", "misc", "county_coverage.csv"))
-cc <- cc %>% filter(year == 2019)
+cc <- cc %>% filter(year == 2019) %>% group_by(FIPS) %>% summarise(coverage = mean(coverage)) %>% mutate(coverage_binary = coverage > 0.8)
 us_county <- map_data("county") %>%
   mutate(polyname = glue("{region},{subregion}")) %>%
   inner_join(county.fips, by = "polyname")
@@ -20,7 +20,7 @@ p <- cc.county %>%
     mapping = aes(
       x = long, y = lat,
       group = group,
-      fill = coverage
+      fill = coverage_binary
     )
   ) +
   geom_polygon(color = "white", size = 0.02) +
@@ -31,4 +31,4 @@ p <- cc.county %>%
     axis.text.y = element_blank(),
     axis.ticks = element_blank()
   )
-p
+print(p)

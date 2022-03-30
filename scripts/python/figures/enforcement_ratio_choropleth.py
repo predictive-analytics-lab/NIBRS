@@ -35,7 +35,7 @@ def confidence_categorization(df: pd.DataFrame, value_col: str, ci_col: str) -> 
 
 def confidence_map(df: pd.DataFrame, time_col: str):
 
-    df = confidence_categorization(df, "selection_ratio", "ci")
+    #df = confidence_categorization(df, "selection_ratio", "ci")
     
     df["frequency"] = df["frequency"].apply(lambda x: f'{int(x):,}')
     df["bwratio"] = df["bwratio"].apply(lambda x: f'{x:.3f}')
@@ -76,7 +76,7 @@ def confidence_map(df: pd.DataFrame, time_col: str):
     fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0},)
     fig.write_html(str(map_path / 'county_ratio_2019_no_poverty_conf.html'))
 
-def map_with_slider(df: pd.DataFrame, time_col: str, value_col: str, log: bool = True,):
+def map_with_slider(df: pd.DataFrame, time_col: str, drug: str):
 
     # if log:
     #     df[value_col] = np.log10(df[value_col])
@@ -84,11 +84,14 @@ def map_with_slider(df: pd.DataFrame, time_col: str, value_col: str, log: bool =
     #     df[value_col] = df[value_col] * 100_000
 
     df["selection_ratio_log10"] = np.log10(df["selection_ratio"])
-    df = df.round({'ci': 3, "selection_ratio": 3})
-    df["slci"] = df["selection_ratio"].astype(str) + " ± " + df["ci"].astype(str)
+    df = df.round({'ci': 3, "selection_ratio": 3, 'ub': 3, 'lb': 3})
+    df["slci"] = df["lb"].astype(str) + " - " + df["ub"].astype(str)
     
     df["frequency"] = df["frequency"].apply(lambda x: f'{int(x):,}')
     df["bwratio"] = df["bwratio"].apply(lambda x: f'{x:.3f}')
+
+    df["incidents"] = df["white_incidents"] + df["black_incidents"]
+    df = df[df["incidents"] >= 30]
 
     fig = px.choropleth_mapbox(
         df, 
@@ -103,7 +106,7 @@ def map_with_slider(df: pd.DataFrame, time_col: str, value_col: str, log: bool =
         hover_data=["slci", "incidents", "frequency", "urban_code", "bwratio"],
         labels={
             "year": "Year",
-            "slci": 'Selection Ratios by Race (Black/White) with CIs',
+            "slci": 'Selection Ratios Range',
             'incidents': "Number of recorded Incidents",
             "bwratio": "Black / White Ratio",
             "urban_code": "Urban Code",
@@ -113,11 +116,41 @@ def map_with_slider(df: pd.DataFrame, time_col: str, value_col: str, log: bool =
     )
     fig.update_geos(fitbounds="locations",visible=False, scope="usa")
     fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0},)
-    fig.write_html(str(map_path / 'county_ratio_2019_no_poverty.html'))
+    fig.write_html(str(map_path / f'county_ratio_2017_2019_{drug}.html'))
+
+def usage_map(df: pd.DataFrame, time_col: str):
+
+    
+    df["usage_ratio"] = df["black_users"] + df["white_users"]
+    df["usage_norm"] = df["usage_ratio"] / (df["black"] + df["white"])
+
+    fig = px.choropleth_mapbox(
+        df, 
+        geojson=counties,
+        locations='FIPS', 
+        color="usage_norm",
+        color_continuous_scale="Viridis",
+        mapbox_style="carto-positron",
+        opacity=0.5,
+        center = {'lat': 42.967243, 'lon': -101.271556},
+        hover_data=["year", "usage_norm", "bwratio", "frequency"],
+        labels={
+            "year": "Year",
+            "usage_norm": 'Usage Est.',
+            "bwratio": "Black / White Ratio",
+            "frequency": "Population"},
+        zoom=3.7,
+        animation_frame=time_col
+    )
+    fig.update_geos(fitbounds="locations",visible=False, scope="usa")
+    fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0},)
+    fig.write_html(str(map_path / 'crack_usage_ratio.html'))
+
 
 
 if __name__ == "__main__":
     data_path = Path(__file__).parents[3] / "data" / "output"
-    df = pd.read_csv(data_path / "selection_ratio_county_2019_wilson_nopoverty.csv", dtype={'FIPS': object})
-    # map_with_slider(df, "year", "selection_ratio", log=True)
-    confidence_map(df, "year")
+    df = pd.read_csv(data_path / "selection_ratio_county_2017-2019_grouped_bootstraps_1000_poverty.csv", dtype={'FIPS': object})
+    map_with_slider(df, "year", "cannabis")
+    # usage_map(df, "year")
+    # confidence_map(df, "year")

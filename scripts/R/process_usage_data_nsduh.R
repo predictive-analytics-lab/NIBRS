@@ -9,7 +9,7 @@ if(length(args)!=6){
   hispanics_included <- 0
   aggregate <- 0
   year_min <- 2010
-  year_max <- 2019
+  year_max <- 2020
 } else{
   print(args)
   poverty <- ifelse(args[1]==1, 1, 0)
@@ -17,7 +17,7 @@ if(length(args)!=6){
   hispanics_included <- ifelse(args[3]==1, 1, 0)
   aggregate <- ifelse(args[4]==1, 1, 0)
   year_min <- ifelse(!is.na(args[5]), args[5], 2010)
-  year_max <- ifelse(!is.na(args[6]), args[6], 2019)
+  year_max <- ifelse(!is.na(args[6]), args[6], 2020)
 }
 
 library(dplyr)
@@ -47,12 +47,17 @@ cli_h1('')
 
 years <- year_min:year_max
 get_nsduh_data <- function(year){
+  if (year != 2020) {
     download.file(url = glue('https://www.datafiles.samhsa.gov/sites/default/files/field-uploads-protected/studies/NSDUH-{year}/NSDUH-{year}-datasets/NSDUH-{year}-DS0001/NSDUH-{year}-DS0001-bundles-with-study-info/NSDUH-{year}-DS0001-bndl-data-tsv.zip'),
                   destfile = here('scripts', 'R', 'downloaded_data', 'nsduh.zip'))
-    #dir.create(here('scripts', 'R', 'downloaded_data', 'nsduh'))
-    unzip(here('scripts', 'R', 'downloaded_data', 'nsduh.zip'),
-          exdir = here('scripts', 'R', 'downloaded_data', glue('nsduh_{year}')))
-    file.remove(here('scripts', 'R', 'downloaded_data', 'nsduh.zip'))
+  } else {
+    download.file(url = glue('https://www.datafiles.samhsa.gov/sites/default/files/field-uploads-protected/studies/NSDUH-{year}/NSDUH-{year}-datasets/NSDUH-{year}-DS0001/NSDUH-{year}-DS0001-bundles-with-study-info/NSDUH-{year}-DS0001-bndl-data-tsv_v1.zip'),
+                  destfile = here('scripts', 'R', 'downloaded_data', 'nsduh.zip'))
+  }
+  #dir.create(here('scripts', 'R', 'downloaded_data', 'nsduh'))
+  unzip(here('scripts', 'R', 'downloaded_data', 'nsduh.zip'),
+        exdir = here('scripts', 'R', 'downloaded_data', glue('nsduh_{year}')))
+  file.remove(here('scripts', 'R', 'downloaded_data', 'nsduh.zip'))
 }
 
 # if filename is already present, just skip everything
@@ -76,80 +81,83 @@ if(length(years_to_download)>0){
 # merge all data files
 
 df_list <- years %>% purrr::map(~ vroom(here('scripts', 'R', 'downloaded_data',
-                           glue('nsduh_{.x}'), glue('NSDUH_{.x}_Tab.{if(.x==2019){"txt"}else{"tsv"}}')),
-                           col_types = cols()) %>%
-                           mutate(VEREP = as.character(VEREP)))
+                                             glue('nsduh_{.x}'), glue('NSDUH_{.x}_Tab.{if(.x==2019||.x==2020){"txt"}else{"tsv"}}')),
+                                        col_types = cols()) %>%
+                                  mutate(VEREP = as.character(VEREP)))
 names(df_list) <- years
 
 # keep only categories that are needed for the analysis
 # codebook https://www.datafiles.samhsa.gov/sites/default/files/field-uploads-protected/studies/NSDUH-2002-2019/NSDUH-2002-2019-datasets/NSDUH-2002-2019-DS0001/NSDUH-2002-2019-DS0001-info/NSDUH-2002-2019-DS0001-info-codebook.pdf
 cols_to_keep <- c(
-                  "CATAG7",
-                  "CATAG6",
-                  "MJEVER",
-                  "MJAGE",
-                  "IRSEX",
-                  "COUTYP2",
-                  "MJDAY30A",
-                  "ANALWT_C",
-                  "NEWRACE2", # race/hispanic ethnicity recode
-                  "PDEN10", # POPULATION DENSITY 2010
-                  "COUTYP4", # COUNTY metro/nonmetro STATUS
-                  "IRPINC3", # RECODE -RESP TOT INCOME - IMPUTATION REVISED, from 2015 onwards
-                  "IRFAMIN3", # RECODE - TOT FAM INCOME - IMPUTATION REVISED
-                  "POVERTY3", # RC-POVERTY LEVEL (% OF US CENSUS POVERTY THRESHOLD)
-                  "POVERTY2",
-                  "MMBT30DY",
-                  "MMT30FRQ",
-                  "MMGETMJ",
-                  "MMLSLBS",
-                  "MMLS10GM",
-                  "MMLSUNIT",
-                  "MMLSOZS",
-                  "MMLSGMS",
-                  "MMBPLACE",
-                  "MMBUYWHO",
-                  "ANALWT_C",
-                  "MMBPLACE",
-                  "MMBCLOSE",
-                  "MMLSPCTB",
-                  
-                  "BKDRVINF", # ARRESTED AND BOOKED
-                  # USE OF ALCOHOL/SUBSTANCES
-                  "DRVINALCO2",
-                  "DRVINMARJ2",
-                  "DRVINDRG",
-                  "DRVINDROTMJ",
-                  "DRVINALDRG", 
-                  "DRVALDR",
-                  "DRVDONLY",
-                  "DRVAONLY",
-                  "CRKUS30A",
-                  "COCUS30A",
-                  "HER30USE",
-                  "METHAM30N",
-                  # "DRVINALCO",
-                  # "DRVINMARJ",
-                  # "DRVINCOCN",
-                  # "DRVINHERN",
-                  # "DRVINHALL",
-                  # "DRVININHL",
-                  # "DRVINMETH",
-                  # # from 2016 onwards
-                  # "DRVINALCO2",
-                  # "DRVINMARJ2",
-                  # "DRVINMDRG",
-                  
-                  "ALCPDANG", # drunkness
-                  "ALCSERPB",
-                  
-                  "VEREP",
-                  "VESTR" # stratum
+  "CATAG7",
+  "CATAG6",
+  "MJEVER",
+  "MJAGE",
+  "IRSEX",
+  "COUTYP2",
+  "MJDAY30A",
+  "ANALWT_C",
+  "NEWRACE2", # race/hispanic ethnicity recode
+  "PDEN10", # POPULATION DENSITY 2010
+  "COUTYP4", # COUNTY metro/nonmetro STATUS
+  "IRPINC3", # RECODE -RESP TOT INCOME - IMPUTATION REVISED, from 2015 onwards
+  "IRFAMIN3", # RECODE - TOT FAM INCOME - IMPUTATION REVISED
+  "POVERTY3", # RC-POVERTY LEVEL (% OF US CENSUS POVERTY THRESHOLD)
+  "POVERTY2",
+  "MMBT30DY",
+  "MMT30FRQ",
+  "MMGETMJ",
+  "MMLSLBS",
+  "MMLS10GM",
+  "MMLSUNIT",
+  "MMLSOZS",
+  "MMLSGMS",
+  "MMBPLACE",
+  "MMBUYWHO",
+  "ANALWT_C",
+  "ANALWTQ1Q4_C",
+  "MMBPLACE",
+  "MMBCLOSE",
+  "MMLSPCTB",
+  
+  "BKDRVINF", # ARRESTED AND BOOKED
+  # USE OF ALCOHOL/SUBSTANCES
+  "DRVINALCO2",
+  "DRVINMARJ2",
+  "DRVINDRG",
+  "DRVINDROTMJ",
+  "DRVINALDRG", 
+  "DRVALDR",
+  "DRVDONLY",
+  "DRVAONLY",
+  "CRKUS30A",
+  "COCUS30A",
+  "HER30USE",
+  "METHAM30N",
+  # "DRVINALCO",
+  # "DRVINMARJ",
+  # "DRVINCOCN",
+  # "DRVINHERN",
+  # "DRVINHALL",
+  # "DRVININHL",
+  # "DRVINMETH",
+  # # from 2016 onwards
+  # "DRVINALCO2",
+  # "DRVINMARJ2",
+  # "DRVINMDRG",
+  
+  "ALCPDANG", # drunkness
+  "ALCSERPB",
+  "VEREP",
+  "VESTRQ1Q4_C",
+  "VESTR" # stratum
 )
 
 
 df <- df_list %>% map_dfr(~ .x %>% select(any_of(cols_to_keep)),
                           .id = 'year')
+
+df = df %>% mutate(ANALWT_C = coalesce(ANALWT_C, ANALWTQ1Q4_C), VESTR = coalesce(VESTR, VESTRQ1Q4_C))
 
 # process data ----
 
@@ -269,10 +277,10 @@ df <- df %>%
 
 
 if(hispanics_included == 1){
-
+  
   # impute missing data
   imputed_df <- missRanger(df %>% select(NEWRACE2, IRFAMIN3, sex, age, usage_ever, poverty_level, is_metro, usage_agefirsttime), pmm.k = 3, num.trees = 100)
-
+  
   # fit rf
   rf <- ranger(is_white ~ sex + age + usage_ever + IRFAMIN3 + poverty_level + poverty_level + usage_agefirsttime,
                data = imputed_df %>% mutate(is_white = case_when(
@@ -287,7 +295,7 @@ if(hispanics_included == 1){
   # we can't really predict race well, but going with this for the moment
   col_to_use <- ifelse(mean(pred_is_white[,1]>0.5)>0.5, 1, 2)
   pred_is_white <- pred_is_white[,col_to_use]
-
+  
   # randomly sample which race the person belongs to
   df[df$NEWRACE2 == 7,'NEWRACE2'] <- ifelse(runif(length(pred_is_white), 0, 1) < pred_is_white, 1, 2)
 }
@@ -315,25 +323,25 @@ if(metro == 1)  vars_group <- c(vars_group, 'is_metro')
 
 # TODO: look at how variance is computed without the replicate weights
 stats_df <- df_srv %>%
-   group_by(across(all_of(vars_group))) %>%
-   summarise(
-     ever_used = survey_mean(usage_ever, na.rm = TRUE),
-     mean_usage_day = survey_mean(usage_days/30, na.rm = TRUE),
-     mean_bought_day = survey_mean(days_bought_marijuana/30, na.rm = TRUE),
-     mean_bought_outside_day = survey_mean(days_bought_marijuana_outside/30,
-                                            na.rm = TRUE),
-     mean_traded_day = survey_mean(days_traded_marijuana/30,
-                                    na.rm = TRUE),
-     mean_traded_outside_day = survey_mean(days_traded_marijuana_outside/30,
-                                            na.rm = TRUE),
-     perc_drunk_past_year = survey_mean(drunk_past_year, na.rm = TRUE),
-     dui_past_year = survey_mean(dui_past_year, na.rm = TRUE),
-     mean_crack_day = survey_mean(crack_usage / 30 , na.rm = TRUE),
-     mean_cocaine_day = survey_mean(cocaine_usage / 30 , na.rm = TRUE),
-     mean_heroin_day = survey_mean(heroin_usage / 30 , na.rm = TRUE),
-     mean_metham_day = survey_mean(metham_usage / 30 , na.rm = TRUE),
-     
-   )
+  group_by(across(all_of(vars_group))) %>%
+  summarise(
+    ever_used = survey_mean(usage_ever, na.rm = TRUE),
+    mean_usage_day = survey_mean(usage_days/30, na.rm = TRUE),
+    mean_bought_day = survey_mean(days_bought_marijuana/30, na.rm = TRUE),
+    mean_bought_outside_day = survey_mean(days_bought_marijuana_outside/30,
+                                          na.rm = TRUE),
+    mean_traded_day = survey_mean(days_traded_marijuana/30,
+                                  na.rm = TRUE),
+    mean_traded_outside_day = survey_mean(days_traded_marijuana_outside/30,
+                                          na.rm = TRUE),
+    perc_drunk_past_year = survey_mean(drunk_past_year, na.rm = TRUE),
+    dui_past_year = survey_mean(dui_past_year, na.rm = TRUE),
+    mean_crack_day = survey_mean(crack_usage / 30 , na.rm = TRUE),
+    mean_cocaine_day = survey_mean(cocaine_usage / 30 , na.rm = TRUE),
+    mean_heroin_day = survey_mean(heroin_usage / 30 , na.rm = TRUE),
+    mean_metham_day = survey_mean(metham_usage / 30 , na.rm = TRUE),
+    
+  )
 
 dir.create(here('scripts', 'R', 'downloaded_data', 'nsduh'))
 

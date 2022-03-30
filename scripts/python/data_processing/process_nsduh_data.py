@@ -14,7 +14,7 @@ data_path = Path(__file__).parents[3] / "data" / "NSDUH"
 
 
 def get_file(poverty: bool, metro: bool, hispanic: bool = False) -> pd.DataFrame:
-    filename = "nsduh_usage_2010_2019"
+    filename = "nsduh_usage_2010_2020"
     if hispanic:
         filename += "_hispincluded"
     else:
@@ -24,7 +24,7 @@ def get_file(poverty: bool, metro: bool, hispanic: bool = False) -> pd.DataFrame
     if metro:
         filename += "_metro"
     filename += ".csv"
-    return pd.read_csv(data_path / filename, index_col=False)
+    return pd.read_csv(data_path / filename, index_col=False, float_precision='round_trip')
 
 
 target_variables = {
@@ -42,7 +42,17 @@ target_variables = {
 }
 
 var_names = ["MJ", "MJ_SE"]
+all_drugs = ["using", "cocaine", "crack", "heroin"]
 
+def max_years(df, years):
+    new_df = pd.DataFrame()
+    df = df.groupby(["race", "sex", "age"]).max().reset_index()
+    for year in years:
+        df_copy = df.copy()
+        df_copy["year"] = year
+        new_df = new_df.append(df_copy)
+    return new_df
+        
 
 def get_nsduh_data(
     years: Union[str, List[Union[str, int]]],
@@ -62,6 +72,7 @@ def get_nsduh_data(
         "crack",
         "meth",
         "heroin",
+        "all"
     ] = "using",
 ):
     if target == "ucr_possesion":
@@ -81,8 +92,11 @@ def get_nsduh_data(
         df = df.rename({"is_metro": "metrocounty"}, axis=1)
         vars_to_keep.insert(3, "metrocounty")
 
-    if target in ["using", "cocaine", "crack", "meth", "heroin"]:
-        df = df[df.year.isin(years)]
+    if target in ["using", "cocaine", "crack", "meth", "heroin", "all"]:
+        if target == "meth":
+            df = max_years(df, years)
+        else:
+            df = df[df.year.isin(years)]
     else:
         yintersect = set(years).intersection({2015, 2016, 2017})
         if len(yintersect) > 0:
@@ -101,8 +115,13 @@ def get_nsduh_data(
             df = tdf.append(df[df.year.isin(years)])
         else:
             df = df[df.year.isin(years)]
-
-    df = df.rename(columns={m: v for m, v in zip(target_variables[target], var_names)})
+    if target == "all":
+        drug_mean_cols = [target_variables[drug][0] for drug in all_drugs]
+        drug_se_cols = [target_variables[drug][1] for drug in all_drugs]
+        df["MJ"] = df[drug_mean_cols].sum(axis=1)
+        df["MJ_SE"] = df[drug_se_cols].sum(axis=1)
+    else:
+        df = df.rename(columns={m: v for m, v in zip(target_variables[target], var_names)})
     return df[vars_to_keep]
 
 
@@ -114,7 +133,7 @@ if __name__ == "__main__":
         "--target",
         type=str,
         help="""The target to use, options are: 
-        using, buying, buying_outside, traded, traded_outside, dui, drunkeness, crack, cocaine, meth, heroin""",
+        using, buying, buying_outside, traded, traded_outside, dui, drunkeness, crack, cocaine, meth, heroin, all""",
         default="using",
     )
     parser.add_argument(
@@ -126,7 +145,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--poverty",
         help="Whether to include poverty information in the model. Default = true.",
-        default=True,
+        default=False,
         action="store_true",
     )
     parser.add_argument(
@@ -146,4 +165,4 @@ if __name__ == "__main__":
         target=args.target,
     )
 
-    df.to_csv(data_path / f"nsduh_processed_{args.year}.csv", index=False)
+    df.to_csv(data_path / f"nsduh_processed_{args.target}_{args.year}.csv", index=False)
