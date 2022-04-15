@@ -1,9 +1,12 @@
-# %%
-import pandas as pd
-from pathlib import Path
-import seaborn as sns
-from matplotlib import pyplot as plt
+
+from functools import partial
 import numpy as np
+from matplotlib import pyplot as plt
+import seaborn as sns
+from pathlib import Path
+import pandas as pd
+from tqdm import tqdm
+tqdm.pandas()
 
 data_path = Path(__file__).parent.parent.parent / "data"
 
@@ -94,35 +97,6 @@ lemas_columns = [
     "ISSU_ADDR_DRUG_ENF",
 ]
 
-agency_lemas = pd.read_csv(data_path / "output" / "agency_lemas.csv", dtype={"FIPS": str}, usecols=lemas_columns + ["FIPS", "population"])
-# %%
-
-binary_columns = set(agency_lemas[lemas_columns].columns[[agency_lemas[lemas_columns].nunique() <=5]])
-cont_columns = set(agency_lemas[lemas_columns].columns[[agency_lemas[lemas_columns].nunique() >= 10]])
-categorical_columns = set(lemas_columns) - binary_columns - cont_columns - {"FIPS", "population"}
-# %%
-
-def binary_convert(r):
-    r.loc[r == 1] = "_yes"
-    r.loc[r == 2] = "_no"
-    r.loc[r == -88] = "_no"
-    r.loc[r == -9] = np.nan
-    r.loc[r == -8] = np.nan
-    return r
-
-def cont_convert(r):
-    r.loc[r < 0] = np.nan
-    return r
-
-for col in binary_columns:
-    agency_lemas[col] = binary_convert(agency_lemas[col])
-    
-for col in cont_columns:
-    agency_lemas[col] = cont_convert(agency_lemas[col])
-
-
-# %%
-
 issu_addr_dict = {
     1: "_personnel",
     2: "_personnel",
@@ -139,7 +113,7 @@ chief_race_dict = {
     4: "_other",
     5: "_other",
     6: "_other",
-    7: "_other", 
+    7: "_other",
     8: "_other",
     -9: np.nan
 }
@@ -153,14 +127,48 @@ edu_dict = {
     -9: np.nan
 }
 
-agency_lemas["ISSU_ADDR_BIAS"] = agency_lemas["ISSU_ADDR_BIAS"].map(issu_addr_dict.get)
-agency_lemas["ISSU_ADDR_DRUG_ENF"] = agency_lemas["ISSU_ADDR_DRUG_ENF"].map(issu_addr_dict.get)
-agency_lemas["PERS_CHF_RACE"] = agency_lemas["PERS_CHF_RACE"].map(chief_race_dict.get)
-agency_lemas["PERS_EDU_MIN"] = agency_lemas["PERS_EDU_MIN"].map(edu_dict.get)
+
+def binary_convert(r):
+    r.loc[r == 1] = "_yes"
+    r.loc[r == 2] = "_no"
+    r.loc[r == -88] = "_no"
+    r.loc[r == -9] = np.nan
+    r.loc[r == -8] = np.nan
+    return r
 
 
+def cont_convert(r):
+    r.loc[r < 0] = np.nan
+    return r
 
-# %%
+
+def load_agency_data():
+    agency_lemas = pd.read_csv(data_path / "output" / "agency_lemas.csv",
+                               dtype={"FIPS": str}, usecols=lemas_columns + ["FIPS", "population"])
+
+    binary_columns = set(agency_lemas[lemas_columns].columns[[
+        agency_lemas[lemas_columns].nunique() <= 5]])
+    cont_columns = set(agency_lemas[lemas_columns].columns[[
+        agency_lemas[lemas_columns].nunique() >= 10]])
+    categorical_columns = set(lemas_columns) - binary_columns - \
+        cont_columns - {"FIPS", "population"}
+
+    for col in binary_columns:
+        agency_lemas[col] = binary_convert(agency_lemas[col])
+
+    for col in cont_columns:
+        agency_lemas[col] = cont_convert(agency_lemas[col])
+
+    agency_lemas["ISSU_ADDR_BIAS"] = agency_lemas["ISSU_ADDR_BIAS"].map(
+        issu_addr_dict.get)
+    agency_lemas["ISSU_ADDR_DRUG_ENF"] = agency_lemas["ISSU_ADDR_DRUG_ENF"].map(
+        issu_addr_dict.get)
+    agency_lemas["PERS_CHF_RACE"] = agency_lemas["PERS_CHF_RACE"].map(
+        chief_race_dict.get)
+    agency_lemas["PERS_EDU_MIN"] = agency_lemas["PERS_EDU_MIN"].map(
+        edu_dict.get)
+    return agency_lemas, {"binary": binary_columns, "cont": cont_columns, "cat": categorical_columns}
+
 
 def continuous_aggregation(x: pd.DataFrame, column: str):
     denom = x.population[x[column] != "_missing"].sum()
@@ -168,7 +176,8 @@ def continuous_aggregation(x: pd.DataFrame, column: str):
         weight_mult = 1
     else:
         weight_mult = x.population.sum() / denom
-    weight = (((x.population / x.population.sum())[x[column] != "_missing"]) * weight_mult)[x[column] != "_missing"]
+    weight = (((x.population / x.population.sum())
+              [x[column] != "_missing"]) * weight_mult)[x[column] != "_missing"]
     x = x[x[column] != "_missing"]
     # x = x[~x[column].isna()]
     if len(x) <= 0:
@@ -176,34 +185,39 @@ def continuous_aggregation(x: pd.DataFrame, column: str):
     return round((x[column] * weight).sum())
 
 
-
 def categorical_aggregation(x: pd.DataFrame, column: str):
     matching_cols = [col for col in x if col.startswith(column)]
     prop_pop = x.population / x.population.sum()
     return (x[matching_cols].mul(prop_pop.values, axis=0)).sum(axis=0)
 
-def aggregate_columns(group: pd.DataFrame):
+
+def aggregate_columns(group: pd.DataFrame, column_dict: dict):
     output = pd.DataFrame()
-    for col in cont_columns:
+    for col in column_dict["cont"]:
         output[col] = [continuous_aggregation(group, col)]
-    for col in categorical_columns.union(binary_columns):
+    for col in column_dict["cat"].union(column_dict["binary"]):
         cat_output = categorical_aggregation(group, col)
         output = pd.concat([output, pd.DataFrame([cat_output])], axis=1)
     return output
 
 
-# %%
-
-from tqdm.notebook import tqdm
-tqdm.pandas()
-
-
-def aggregate(df: pd.DataFrame):
+def aggregate(df: pd.DataFrame, column_dict: dict):
     df = df.fillna(value=np.nan)
-    df.loc[:, lemas_columns] = df.loc[:, lemas_columns].fillna(value="_missing")
-    agency_lemas_1hot = pd.get_dummies(df, columns=list(categorical_columns.union(binary_columns)))
-    agency_lemas_1hot = agency_lemas_1hot.groupby("FIPS").progress_apply(aggregate_columns)
+    df.loc[:, lemas_columns] = df.loc[:,
+                                      lemas_columns].fillna(value="_missing")
+    agency_lemas_1hot = pd.get_dummies(df, columns=list(
+        column_dict["cat"].union(column_dict["binary"])))
+    agency_lemas_1hot = agency_lemas_1hot.groupby(
+        "FIPS").progress_apply(partial(aggregate_columns, column_dict=column_dict))
     return agency_lemas_1hot
 
-output = aggregate(agency_lemas)
-# %%
+
+def main():
+    agency_lemas, col_dict = load_agency_data()
+    output = aggregate(agency_lemas, col_dict)
+    return output
+
+
+if __name__ == "__main__":
+    df = main()
+    df.to_csv(data_path / "agency" / "lemas_fips.csv")

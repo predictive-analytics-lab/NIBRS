@@ -124,19 +124,27 @@ lemas_columns = [
     "POL_CULTAW",
     "ISSU_ADDR_BIAS",
     "ISSU_ADDR_DRUG_ENF",
+    "TECH_IFC_CRIMREC",
+    "TECH_IFC_GISMAP",
+    "TECH_TYP_LPR",
+    "TECH_COMP_BOOK",
+    "TECH_COMP_SNA",
     "ORI9"
 ]
 
 ####### DATA LOADING ###########
 
+
 def load_lemas_data() -> pd.DataFrame:
-    ap_df = pd.read_csv(data_dir / "misc" / "agency_participation.csv", usecols=ap_cols)
+    ap_df = pd.read_csv(data_dir / "misc" /
+                        "agency_participation.csv", usecols=ap_cols)
     ap_df = ap_df[ap_df.data_year == 2019]
     fips_ori_df = pd.read_csv(data_dir / "misc" / "LEAIC.tsv", delimiter="\t",
-                            usecols=["ORI9", "FIPS"], dtype={'FIPS': object})
+                              usecols=["ORI9", "FIPS"], dtype={'FIPS': object})
     fips_ori_df = fips_ori_df.rename(columns={"ORI9": "ori"})
     ap_df = pd.merge(ap_df, fips_ori_df, on="ori")
-    lemas_df = pd.read_csv(data_dir / "agency" / "lemas_2016.tsv", sep='\t', usecols=lemas_columns)
+    lemas_df = pd.read_csv(data_dir / "agency" /
+                           "lemas_2016.tsv", sep='\t', usecols=lemas_columns)
     lemas_df = lemas_df.rename(columns={"ORI9": "ori"})
     lemas_df = pd.merge(ap_df, lemas_df, on="ori", how="left")
     return lemas_df

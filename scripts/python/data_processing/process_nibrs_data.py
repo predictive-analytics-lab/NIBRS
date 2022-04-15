@@ -142,7 +142,7 @@ def load_and_process_nibrs(
         nibrs_df = nibrs_df[(nibrs_df["ethnicity_id"] != 1)]
 
     if drugs == "all":
-        drugs = ["crack", "cocaine", "heroin", "cannabis"]
+        drugs = ["crack", "cocaine", "heroin", "meth"]
     else:
         drugs = drugs.split(",")
     drug_columns = [f"{drug}_count" for drug in drugs]

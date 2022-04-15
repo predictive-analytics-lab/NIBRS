@@ -34,7 +34,7 @@ target_variables = {
     "traded": ["mean_traded_day", "mean_traded_day_se"],
     "traded_outside": ["mean_traded_outside_day", "mean_traded_outside_day_se"],
     "dui": ["dui_past_year", "dui_past_year_se"],
-    "drunkeness": ["drunkeness_past_year", "drunkeness_past_year_se"],
+    "drunkeness": ["perc_drunk_past_year", "perc_drunk_past_year_se"],
     "cocaine": ["mean_cocaine_day", "mean_cocaine_day_se"],
     "heroin": ["mean_heroin_day", "mean_heroin_day_se"],
     "crack": ["mean_crack_day", "mean_crack_day_se"],
@@ -42,7 +42,8 @@ target_variables = {
 }
 
 var_names = ["MJ", "MJ_SE"]
-all_drugs = ["using", "cocaine", "crack", "heroin"]
+all_drugs = ["meth", "cocaine", "crack", "heroin"]
+
 
 def max_years(df, years):
     new_df = pd.DataFrame()
@@ -50,9 +51,9 @@ def max_years(df, years):
     for year in years:
         df_copy = df.copy()
         df_copy["year"] = year
-        new_df = new_df.append(df_copy)
+        new_df = pd.concat([new_df, df_copy])
     return new_df
-        
+
 
 def get_nsduh_data(
     years: Union[str, List[Union[str, int]]],
@@ -121,7 +122,8 @@ def get_nsduh_data(
         df["MJ"] = df[drug_mean_cols].sum(axis=1)
         df["MJ_SE"] = df[drug_se_cols].sum(axis=1)
     else:
-        df = df.rename(columns={m: v for m, v in zip(target_variables[target], var_names)})
+        df = df.rename(columns={m: v for m, v in zip(
+            target_variables[target], var_names)})
     return df[vars_to_keep]
 
 
@@ -165,4 +167,5 @@ if __name__ == "__main__":
         target=args.target,
     )
 
-    df.to_csv(data_path / f"nsduh_processed_{args.target}_{args.year}.csv", index=False)
+    df.to_csv(
+        data_path / f"nsduh_processed_{args.target}_{args.year}.csv", index=False)

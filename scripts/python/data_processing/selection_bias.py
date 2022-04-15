@@ -17,6 +17,7 @@ import subprocess
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from tqdm.contrib.concurrent import process_map
 
 from process_census_data import get_census_data
 from process_nsduh_data import get_nsduh_data
@@ -84,12 +85,13 @@ def incident_users(
     # prob_dem = (census_df.groupby([*vars, resolution_dict[resolution]]).frequency.sum() / census_df.groupby(["race", resolution_dict[resolution]]).frequency.sum()).to_frame("prob_dem").reset_index()
 
     # census_df = census_df.merge(prob_dem, on=[resolution_dict[resolution], *vars])
-    
+
     census_df["users"] = census_df["frequency"] * census_df["MJ"] * 365.0
 
     # census_df["users_var"] = (census_df["prob_dem"] ** 2) * census_df["users"] * (census_df["prob_usage_one_dat_se"] ** 2) * 365.0
 
-    census_df["users_var"] = census_df["users"] * (census_df["MJ_SE"] ** 2) * 365.0
+    census_df["users_var"] = census_df["users"] * \
+        (census_df["MJ_SE"] ** 2) * 365.0
 
     if dont_aggregate:
         vars = list(set(vars) - {"poverty", "metrocounty"})
@@ -114,12 +116,31 @@ def incident_users(
         .reset_index()
     )
 
+    population = (
+        census_df.groupby(["race", resolution_dict[resolution]])
+        .frequency.sum()
+        .to_frame("population")
+        .reset_index()
+    )
+
+    population = population.pivot(
+        index=resolution_dict[resolution], columns="race", values="population"
+    )
+
     users = users.pivot(
         index=resolution_dict[resolution], columns="race", values="user_count"
     )
+
     users_var = users_var.pivot(
         index=resolution_dict[resolution], columns="race", values="user_var"
     )
+
+    users = users.rename(
+        columns={"black": "black_users", "white": "white_users"}).reset_index()
+    population = population.rename(
+        columns={"black": "black_population", "white": "white_population"}).reset_index()
+    users_var = users_var.rename(columns={
+                                 "black": "black_users_variance", "white": "white_users_variance"}).reset_index()
 
     if not ucr:
         incidents = (
@@ -135,19 +156,11 @@ def incident_users(
         )
     else:
         incidents = nibrs_df
+    incidents = incidents.rename(
+        columns={"black": "black_incidents", "white": "white_incidents"})
     incidents = incidents.merge(users, on=resolution_dict[resolution])
+    incidents = incidents.merge(population, on=resolution_dict[resolution])
     df = incidents.merge(users_var, on=resolution_dict[resolution])
-    df = df.rename(
-        {
-            "black": "black_users_variance",
-            "white": "white_users_variance",
-            "black_x": "black_incidents",
-            "black_y": "black_users",
-            "white_x": "white_incidents",
-            "white_y": "white_users",
-        },
-        axis=1,
-    )
     return df
 
 
@@ -156,21 +169,18 @@ def selection_ratio(incident_user_df: pd.DataFrame, wilson: bool) -> pd.DataFram
     incident_user_df = incident_user_df[incident_user_df.black_users > 0]
     incident_user_df = incident_user_df[incident_user_df.white_users > 0]
     if wilson:
-        incident_user_df["result"] = incident_user_df.apply(
-            lambda x: wilson_selection(
-                x["black_incidents"],
-                x["black_users"],
-                x["white_incidents"],
-                x["white_users"],
-            ),
-            axis=1,
-        )
-        (
-            incident_user_df["selection_ratio"],
-            incident_user_df["ci"],
-            incident_user_df["ber_error"],
-            incident_user_df["wer_error"],
-        ) = incident_user_df.result.str
+        incident_user_df[["selection_ratio", "ci", "ber_error", "wer_error"]] = incident_user_df.apply(lambda x: wilson_selection(
+            x["black_incidents"],
+            x["black_users"],
+            x["white_incidents"],
+            x["white_users"],
+        ), axis=1, result_type="expand")
+        incident_user_df[["incident_norm_ratio", "inr_ci", "bn_error", "wn_error"]] = incident_user_df.apply(lambda x: wilson_selection(
+            x["black_incidents"],
+            x["black_population"],
+            x["white_incidents"],
+            x["white_population"],
+        ), axis=1, result_type="expand")
     else:
         incident_user_df["selection_ratio"] = incident_user_df.apply(
             lambda x: simple_selection_ratio(
@@ -234,9 +244,11 @@ def add_extra_information(
         urban_codes.rename(
             columns={"FIPS code": "FIPS", "2013 code": "urban_code"}, inplace=True
         )
-        urban_codes["FIPS"] = urban_codes.FIPS.apply(lambda x: str(x).rjust(5, "0"))
+        urban_codes["FIPS"] = urban_codes.FIPS.apply(
+            lambda x: str(x).rjust(5, "0"))
 
-        selection_bias_df = selection_bias_df.merge(urban_codes, how="left", on="FIPS")
+        selection_bias_df = selection_bias_df.merge(
+            urban_codes, how="left", on="FIPS")
 
     selection_bias_df = selection_bias_df.merge(
         incidents, how="left", on=resolution_dict[geographic_resolution]
@@ -262,7 +274,8 @@ def add_race_ratio(
     race_ratio = race_ratio.pivot(
         resolution_dict[geographic_resolution], columns="race"
     ).reset_index()
-    race_ratio.columns = [resolution_dict[geographic_resolution], "black", "white"]
+    race_ratio.columns = [
+        resolution_dict[geographic_resolution], "black", "white"]
     race_ratio["bwratio"] = race_ratio["black"] / race_ratio["white"]
 
     incident_df = pd.merge(
@@ -288,9 +301,11 @@ def load_datasets(
     hispanics: bool,
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     census_df = get_census_data(years=years, poverty=poverty, metro=metro)
-    nsduh_df = get_nsduh_data(years=years, poverty=poverty, metro=metro, target=target)
+    nsduh_df = get_nsduh_data(
+        years=years, poverty=poverty, metro=metro, target=target)
     if target not in ["dui", "drunkeness", "ucr_possesion"]:
-        cannabis_targets = ["using", "buying", "buying_outside", "trading", "trading_outside"]
+        cannabis_targets = ["using", "buying",
+                            "buying_outside", "trading", "trading_outside"]
         drug_type = "cannabis" if target in cannabis_targets else target
         nibrs_df = load_and_process_nibrs(
             years=years,
@@ -317,7 +332,7 @@ def wilson_error(n_s: int, n: int, z=1.96) -> Tuple[float, float]:
 
     return: The lower and upper bound of the Wilson score interval
     """
-    n_f = n - n_s
+    n_f = np.max([1, n - n_s])
     denom = n + z ** 2
     adjusted_p = (n_s + z ** 2 * 0.5) / denom
     ci = (z / denom) * np.sqrt((n_s * n_f / n) + (z ** 2 / 4))
@@ -355,7 +370,6 @@ def bootstrap_selection(incident_users_df: pd.DataFrame, bootstraps: int, resolu
         else:
             successes = np.nan
         return successes
-    
 
     black_count = []
     white_count = []
@@ -372,14 +386,15 @@ def bootstrap_selection(incident_users_df: pd.DataFrame, bootstraps: int, resolu
     for i, row in incident_users_df.iterrows():
         white_vector = _sample_incidents(
             row["white_prob"], row["white_users"], bootstraps, seed=1
-        )
+        ) + 0.5
         black_vector = _sample_incidents(
             row["black_prob"], row["black_users"], bootstraps, seed=1
-        )
+        ) + 0.5
         selection_ratios = (black_vector / row["black_users"]) / (
             white_vector / row["white_users"]
         )
-        selection_ratios = np.nan_to_num(selection_ratios, nan=np.inf, posinf=np.inf)
+        selection_ratios = np.nan_to_num(
+            selection_ratios, nan=np.inf, posinf=np.inf)
         incident_users_df.loc[i, "selection_ratio"] = (
             row["black_prob"] / row["white_prob"]
         )
@@ -430,6 +445,94 @@ def delta_method(df: pd.DataFrame):
     return df
 
 
+def _load_year(
+        year: str,
+        resolution: str,
+        poverty: bool,
+        metro: bool,
+        all_incidents: bool,
+        target: str,
+        arrests: bool,
+        time: str,
+        time_type: str,
+        hispanics: bool,
+        smooth: bool,
+        urban_filter: int,
+        smoothing_param: float,
+        group_years: bool,
+        dont_aggregate: bool,
+        ci: str,
+        bootstraps: int):
+    try:
+        census_df, nsduh_df, nibrs_df = load_datasets(
+            str(year),
+            resolution,
+            poverty,
+            metro,
+            all_incidents,
+            target,
+            arrests,
+            time,
+            time_type,
+            hispanics,
+        )
+    except FileNotFoundError:
+        warnings.warn(f"Data missing for {year}. Skipping.")
+        return
+    # Copy to retain unsmoothed information
+    incident_df = nibrs_df.copy()
+    population_df = census_df.copy()
+
+    if smooth:
+        nibrs_df, census_df = smooth_data(
+            nibrs_df,
+            census_df,
+            metro=metro,
+            poverty=poverty,
+            urban_filter=urban_filter,
+            smoothing_param=smoothing_param,
+            group_years=group_years,
+        )
+
+    ##### END DATA LOADING ######
+    ucr = target in ["dui", "drunkeness", "ucr_possesion"]
+    #### START ####
+    incident_users_df = incident_users(
+        nibrs_df,
+        census_df,
+        nsduh_df,
+        resolution,
+        poverty,
+        metro,
+        years=group_years,
+        ucr=ucr,
+        dont_aggregate=dont_aggregate,
+    )
+    incident_users_df = incident_users_df.fillna(0)
+
+    if not dont_aggregate:
+        if ci == "none":
+            temp_df = selection_ratio(incident_users_df, wilson=False)
+        elif ci == "wilson":
+            temp_df = selection_ratio(incident_users_df, wilson=True)
+        else:
+            temp_df = bootstrap_selection(
+                incident_users_df, bootstraps, resolution)
+            temp_df = delta_method(temp_df)
+
+        if not ucr:
+            temp_df = add_extra_information(
+                temp_df, incident_df, population_df, resolution, year
+            )
+            temp_df = add_race_ratio(population_df, temp_df, resolution)
+            #### END ###
+    else:
+        temp_df = incident_users_df.copy()
+
+    temp_df["year"] = year
+    return temp_df
+
+
 def main(
     resolution: str,
     year: str,
@@ -461,78 +564,29 @@ def main(
         years = [year]
 
     selection_bias_df = pd.DataFrame()
+    ##### DATA LOADING ######
 
-    for yi in years:
+    partialled_load_year = partial(
+        _load_year,
+        resolution=resolution,
+        poverty=poverty,
+        metro=metro,
+        all_incidents=all_incidents,
+        target=target,
+        arrests=arrests,
+        time=time,
+        time_type=time_type,
+        hispanics=hispanics,
+        smooth=smooth,
+        urban_filter=urban_filter,
+        smoothing_param=smoothing_param,
+        group_years=group_years,
+        dont_aggregate=dont_aggregate,
+        ci=ci,
+        bootstraps=bootstraps)
 
-        ##### DATA LOADING ######
-
-        try:
-            census_df, nsduh_df, nibrs_df = load_datasets(
-                str(yi),
-                resolution,
-                poverty,
-                metro,
-                all_incidents,
-                target,
-                arrests,
-                time,
-                time_type,
-                hispanics,
-            )
-        except FileNotFoundError:
-            warnings.warn(f"Data missing for {yi}. Skipping.")
-            continue
-        # Copy to retain unsmoothed information
-        incident_df = nibrs_df.copy()
-        population_df = census_df.copy()
-
-        if smooth:
-            nibrs_df, census_df = smooth_data(
-                nibrs_df,
-                census_df,
-                metro=metro,
-                poverty=poverty,
-                urban_filter=urban_filter,
-                smoothing_param=smoothing_param,
-                group_years=group_years,
-            )
-
-        ##### END DATA LOADING ######
-        ucr = target in ["dui", "drunkeness", "ucr_possesion"]
-        #### START ####
-        incident_users_df = incident_users(
-            nibrs_df,
-            census_df,
-            nsduh_df,
-            resolution,
-            poverty,
-            metro,
-            years=group_years,
-            ucr=ucr,
-            dont_aggregate=dont_aggregate,
-        )
-        incident_users_df = incident_users_df.fillna(0)
-
-        if not dont_aggregate:
-            if ci == "none":
-                temp_df = selection_ratio(incident_users_df, wilson=False)
-            elif ci == "wilson":
-                temp_df = selection_ratio(incident_users_df, wilson=True)
-            else:
-                temp_df = bootstrap_selection(incident_users_df, bootstraps, resolution)
-                temp_df = delta_method(temp_df)
-
-            if not ucr:
-                temp_df = add_extra_information(
-                    temp_df, incident_df, population_df, resolution, yi
-                )
-                temp_df = add_race_ratio(population_df, temp_df, resolution)
-                #### END ###
-        else:
-            temp_df = incident_users_df.copy()
-        
-        temp_df["year"] = yi
-        selection_bias_df = selection_bias_df.append(temp_df.copy())
+    selection_bias_df = pd.concat(process_map(
+        partialled_load_year, years, max_workers=2))
 
     filename = f"selection_ratio_{resolution}_{year}"
 

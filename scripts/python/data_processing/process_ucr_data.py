@@ -11,14 +11,15 @@ from pathlib import Path
 import argparse
 
 data_path = Path(__file__).parent.parent.parent.parent / "data"
-ucr_arrests = data_path / "UCR" / "arrests.csv"
+ucr_arrests = data_path / "UCR" / "ucr_arrests.csv"
 
 
 def parse_year(years: Union[str, int]) -> List[int]:
     if isinstance(years, str):
         if "-" in years:
             years = years.split("-")
-            years = [int(year) for year in range(int(years[0]), int(years[1]) + 1)]
+            years = [int(year)
+                     for year in range(int(years[0]), int(years[1]) + 1)]
         else:
             years = [int(years)]
     elif isinstance(years, list):

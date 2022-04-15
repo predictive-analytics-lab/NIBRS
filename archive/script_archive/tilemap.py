@@ -7,8 +7,8 @@ from matplotlib import pyplot as plt
 import numpy as np
 from pathlib import Path
 
-output_dir = Path(__file__).parents[3] / "data" / "output"
-df = pd.read_csv(output_dir / "selection_ratio_county_2012-2019_wilson.csv", dtype={"FIPS":str})
+output_dir = Path(__file__).parents[2] / "data" / "output"
+df = pd.read_csv(output_dir / "selection_ratio_county_2010-2019_bootstraps_1000_all.csv", dtype={"FIPS":str})
 sr_df = pd.read_csv(output_dir.parent / "misc" / "subregion_counties.csv", dtype={"FIPS": str}, usecols=["FIPS", "State", "County"])
 df = df.merge(sr_df, on="FIPS", how="left")
 coverage_df = pd.read_csv(output_dir.parent / "misc" / "county_coverage.csv", dtype={"FIPS":str})
@@ -36,7 +36,7 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 
 
-misc_dir = Path(__file__).parents[3] / "data" / "misc"
+misc_dir = Path(__file__).parents[2] / "data" / "misc"
 
 tile_grid = pd.read_csv(misc_dir / "us_tile_grid.csv")
 tile_grid = tile_grid.rename(columns={"name": "State"})
