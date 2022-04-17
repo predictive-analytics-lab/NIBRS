@@ -2,7 +2,6 @@
 # %%
 from email.mime import base
 from fileinput import filename
-from optparse import Option
 from re import X
 from this import d
 from typing import List, Optional, Tuple
@@ -393,7 +392,7 @@ def plot_bool(df: pd.DataFrame, var: str, option: Optional[str] = None, bins: Op
     fig.legend(handles[:3], [x.title() for x in labels[:3]],
                title=f"Race", loc='lower center', ncol=len(bins), fancybox=True)
     plt.savefig(base_path.parent / "plots" / filename)
-
+    plt.show()
 
 # %%
 df, correlates = load_data()
@@ -466,7 +465,7 @@ plot_bool(
 
 df["DIS_P100K"] = (
     df["OPER_DIS"] / (df["black_population"] + df["white_population"])) * 100000
-df["DIS_P100K"] = df["CALLS_P100K"].rank(pct=True).astype(float)
+df["DIS_P100K"] = df["DIS_P100K"].rank(pct=True).astype(float)
 
 plot_bool(
     df,

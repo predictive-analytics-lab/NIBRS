@@ -16,6 +16,8 @@ dataframe_paths = {
     "meth": data_dir / "selection_ratio_county_2010-2020_wilson_meth.csv",
     "cocaine": data_dir / "selection_ratio_county_2010-2020_wilson_cocaine.csv",
     "heroin": data_dir / "selection_ratio_county_2010-2020_wilson_heroin.csv",
+    "dui": data_dir / "selection_ratio_county_2010-2020_wilson_dui.csv",
+    "drunkeness": data_dir / "selection_ratio_county_2010-2020_wilson_drunkeness.csv",
     "cannabis": data_dir / "selection_ratio_county_2010-2020_wilson.csv",
     "non-drug_offenses": data_dir / "other_incidents_2010-2020.csv",
 }
@@ -224,17 +226,7 @@ def main():
     # plot heatmap
     import seaborn as sns
     import matplotlib.pyplot as plt
-    # sns.set(style="white", )
-    # fig, ax = plt.subplots(figsize=(12, 10))
-    formatted_cols = [x.replace("_", " ").title() for x in corr_cols]
-    # sns.set(rc={'text.usetex': True})
-    # sns.heatmap(lower_triangle, annot=True, fmt=".2f",
-    #             xticklabels=formatted_cols[1:], yticklabels=formatted_cols, mask=np.array(np.array(lower_triangle < 0.5).astype(int) + np.array(lower_triangle >= 1).astype(int)).astype(bool), ax=ax)
-    # sns.heatmap(lower_triangle, annot=False,
-    #             xticklabels=formatted_cols[1:], yticklabels=formatted_cols, mask=np.array(np.array(lower_triangle > 0.5).astype(int) + np.tril(corrs)).astype(bool), ax=ax, legend=False)
-    # # rotate x ticks - shift back left
-    # plt.xticks(rotation=45, ha='right')
-    # plt.tight_layout()
+    formatted_cols = [" ".join(x.split("_")[:-1]).title() for x in corr_cols]
     im, cbar = heatmap(data=lower_triangle, labels=formatted_cols, mask=np.tril(
         corrs, -1).astype(bool), focus_mask=(corrs > 0.5).astype(bool), cbarlabel="Correlation")
     annotate_heatmap(im, data=corrs, focus_mask=(
