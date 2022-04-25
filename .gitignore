@@ -150,5 +150,6 @@ po/*~
 
 Scripts/R/*.csv
 .Rproj.user
+*.DS_Store
 
 Scripts/R/downloaded_data

@@ -23,6 +23,7 @@ sc <- fips_codes %>%
   mutate(FIPS = glue("{state_code}{county_code}"))
 
 # figure 1 ----
+
 cols <- c("#D55E00", "#CC79A7", "#F0E442", "#56B4E9", "#009E73")
 opacity <- c("", "E6", "80", "4D")
 all_cols <- cols %>%
@@ -130,40 +131,25 @@ sr_to_plot <- sr %>%
   filter(number_of_years_reporting == 1) %>%
   mutate(year = as.factor(year)) %>%
   mutate(coefvar = ci / selection_ratio) %>%
-  # ggplot(aes(year, log(selection_ratio), alpha = 1/coefvar)) +
-  # geom_density() +
-  # ylim(0,5) +
-  # theme_bw()
   drop_na()
 
 sr_to_plot %>%
-  # ggplot(aes(x = log(selection_ratio), y = as.factor(year))) + #, fill = stat(x))) +
-  # geom_density_ridges2(fill = 'white') +
   ggplot(aes(x = log(selection_ratio), y = year, fill = factor(stat(quantile)))) +
-  # geom_density_ridges_gradient() +
-  # xlim(-1,3.5) +
-  # theme_bw() +
   xlab("Log of selection ratio") +
   ylab("Year") +
-  # scale_fill_viridis_c('', option = "C") +
   stat_density_ridges(
     geom = "density_ridges_gradient", calc_ecdf = TRUE,
     quantiles = 4, quantile_lines = TRUE
   ) +
   scale_fill_viridis_d(name = "Quartiles") +
   theme_bw()
-# TODO: change colors
 ggsave(here("scripts", "R", "plots", "density_sr_by_year_colored.pdf"))
+
+
 sr_to_plot %>%
-  # ggplot(aes(x = log(selection_ratio), y = as.factor(year))) + #, fill = stat(x))) +
-  # geom_density_ridges2(fill = 'white') +
   ggplot(aes(x = log(selection_ratio), y = year, fill = factor(stat(quantile)))) +
-  # geom_density_ridges_gradient() +
-  # xlim(-1,3.5) +
-  # theme_bw() +
   xlab("Log of selection ratio") +
   ylab("Year") +
-  # scale_fill_viridis_c('', option = "C") +
   stat_density_ridges(
     geom = "density_ridges_gradient", calc_ecdf = TRUE,
     quantiles = 4, quantile_lines = TRUE
@@ -173,33 +159,9 @@ sr_to_plot %>%
 ggsave(here("scripts", "R", "plots", "density_sr_by_year.pdf"))
 
 
-# sr %>%
-#     group_by(FIPS) %>%
-#     #mutate(number_of_years_reporting = ifelse(length(unique(year))==8, 1, 0)) %>%
-#     #filter(number_of_years_reporting == 1) %>%
-#     mutate(year = as.factor(year)) %>%
-#     mutate(coefvar = ci/selection_ratio) %>%
-#     ggplot(aes(factor(year, levels = 2012:2019), log(selection_ratio))) +
-#     geom_boxplot() +
-#     theme_bw()
-
-# sr %>%
-#     group_by(FIPS) %>%
-#     mutate(number_of_years_reporting = ifelse(length(unique(year))==8, 1, 0)) %>%
-#     #filter(number_of_years_reporting == 1) %>%
-#     mutate(coefvar = ci/selection_ratio) %>%
-#     lm(selection_ratio ~ year, data = .)
-
-
-# sr %>%
-#     mutate(log_sr = log(selection_ratio)) %>%
-#     ggplot(aes(selection_ratio, fill = year_after_2015)) +
-#     xlim(0,10) +
-#     geom_density(alpha = 0.3) +
-#     #facet_wrap(~ year) +
-#     theme_bw()
 
 # figure 2B ----
+
 coef_year <- sr %>%
   inner_join(sc) %>%
   group_by(state) %>%
@@ -220,6 +182,7 @@ coef_year <- sr %>%
 us_states <- map_data("state") %>% left_join(coef_year %>% mutate(state = tolower(state_name)),
   by = c("region" = "state")
 )
+
 ggplot(
   data = us_states,
   mapping = aes(
@@ -246,6 +209,7 @@ ggplot(
     axis.text.y = element_blank(),
     axis.ticks = element_blank()
   )
+
 
 
 # figure 3 ----
@@ -280,40 +244,9 @@ total_n_counties <- sc %>%
   inner_join(legalised) %>%
   group_by(state_name) %>%
   summarise(total_n_counties = length(unique(FIPS)))
-#' tb_plot <- sr %>%
-#'   inner_join(sc) %>%
-#'   inner_join(legalised) %>%
-#'   mutate(year_shift = year - year_legal) %>%
-#'   group_by(FIPS) %>%
-#'   mutate(years_reporting = length(unique(year))) %>%
-#'   filter(years_reporting == 10) %>%
-#'   group_by(year, year_shift, state_name, year_legal) %>%
-#'   summarise(
-#'     median_log_selection_ratio = median(log(selection_ratio)),
-#'     mean_selection_ratio = mean(selection_ratio * frequency) / sum(frequency),
-#'     mean_log_selection_ratio = sum(log(selection_ratio) * frequency) / sum(frequency),
-#'     mean_log_selection_ratio_lb = mean_log_selection_ratio - 1.96 * sqrt(1/sum(rel_err)^2 * sum(rel_err^2 * var_log)),
-#'     mean_log_selection_ratio_ub = mean_log_selection_ratio + 1.96 * sqrt(1/sum(rel_err)^2 * sum(rel_err^2 * var_log)),
-#'     #mean_log_selection_ratio_lb = mean_log_selection_ratio - 1.96 * sqrt(1/sum(frequency)^2 * sum(frequency^2 * var_log)),
-#'     #mean_log_selection_ratio_ub = mean_log_selection_ratio + 1.96 * sqrt(1/sum(frequency)^2 * sum(frequency^2 * var_log)),
-#'     incidents = sum(incidents),
-#'     log_incidents_per100k = log(sum(incidents) / sum(frequency) * 1e5),
-#'    # log_arrests_per100k = log(sum(arrests) / sum(frequency) * 1e5),
-#'     n_counties = length(unique(FIPS))
-#'   ) %>%
-#'   inner_join(total_n_counties) %>%
-#'   ungroup %>%
-#'   # compute n of counties for each state (must be stable across years)
-#'   mutate(state_name = glue('{state_name} ({n_counties}/{total_n_counties} counties)')) %>%
-#'   pivot_longer(cols = c('log_incidents_per100k',
-#'                         #'log_arrests_per100k',
-#'                         'mean_log_selection_ratio'),
-#'                names_to = 'Variable', values_to = 'value')
 
 sr_selected_counties <- sr %>%
   inner_join(sc) %>%
-  #inner_join(legalised) %>%
-  #mutate(year_shift = year - year_legal) %>%
   group_by(FIPS) %>%
   mutate(years_reporting = length(unique(year))) %>%
   filter(years_reporting == 10)
@@ -323,9 +256,6 @@ tb_plot_sr <- sr_selected_counties %>%
     mean_log_selection_ratio = sum(log(selection_ratio) * frequency) / sum(frequency),
     mean_log_selection_ratio_lb = mean_log_selection_ratio - 1.96 * sqrt(1/sum(rel_err)^2 * sum(rel_err^2 * var_log)),
     mean_log_selection_ratio_ub = mean_log_selection_ratio + 1.96 * sqrt(1/sum(rel_err)^2 * sum(rel_err^2 * var_log)),
-    #incidents = sum(incidents),
-    #log_incidents_per100k = log(sum(incidents) / sum(frequency) * 1e5),
-    # log_arrests_per100k = log(sum(arrests) / sum(frequency) * 1e5),
     n_counties = length(unique(FIPS))
   ) %>%
   inner_join(total_n_counties) %>%
@@ -414,46 +344,9 @@ ggsave(here("scripts", "R", "plots", "sr_by_year_legalized.pdf"), height = 8, wi
 
 
 tb_plot %>%
- # filter(Variable == 'mean_log_selection_ratio') %>%
   filter(variable == 'log_incidents_per100k') %>%
   group_by(state_name) %>%
   summarise(out = list(lm(value ~ year) %>% tidy())) %>%
   unnest(out) %>%
   filter(term == 'year')
   
-# 
-# p_inc <- sr %>%
-#   inner_join(sc) %>%
-#   inner_join(legalised) %>%
-#   # mutate(year_shift = year - year_legal) %>%
-#   group_by(FIPS) %>%
-#   mutate(years_reporting = length(unique(year))) %>%
-#   filter(years_reporting == 10) %>%
-#   group_by(year, state_name, year_legal) %>%
-#   summarise(
-#     incidents = sum(incidents) / sum(frequency) * 1e5,
-#     n_counties = length(unique(FIPS))
-#   ) %>%
-#   ungroup %>%
-#   # compute n of counties for each state (must be stable across years)
-#   mutate(state_name = glue('{state_name} (# counties={n_counties})')) %>%
-#   # plot
-#   ggplot(aes(year, log(incidents))) +
-#   geom_line() +
-#   theme_bw() +
-#   geom_vline(aes(xintercept = year_legal), linetype = "dashed") +
-#   xlab("Year") +
-#   ylab("Log of incidents per 100,000 people") +
-#   facet_wrap(~state_name)  + 
-#   scale_x_continuous(breaks = seq(2010, 2018, by = 2))
-# ggsave(here("scripts", "R", "plots", "incidents_per_100000people.pdf"))
-
-
-# additional figures ----
-
-
-
-
-
-
-

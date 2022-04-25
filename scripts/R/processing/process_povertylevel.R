@@ -1,3 +1,4 @@
+renv::restore()
 
 library(tidycensus)
 library(tidyverse)
@@ -11,6 +12,7 @@ library(vroom)
 # useful links
 # https://walker-data.com/tidycensus/articles/pums-data.html for standard errors etc
 # https://github.com/gergness/srvyr
+
 
 # get PUMS data ----
 
@@ -52,7 +54,7 @@ get_pums_x_state <- function(state_chosen){
     survey = "acs5",
     year = 2019,
     recode = TRUE,
-    key = "de879f4953355fde9098b4ccc9bbb5f270f4fb29",
+    key = "",# add key
     rep_weights = "person"
   ) %>%
     try()
@@ -60,7 +62,7 @@ get_pums_x_state <- function(state_chosen){
 
 download_poverty_data <- function(state_chosen){
 
-  files_already_present <- list.files(here('scripts', 'R', 'downloaded_data', 'poverty_data_x_state'))
+  files_already_present <- list.files(here('data_downloading', 'R', 'poverty_data_x_state'))
   if(glue('{state_chosen}_rawdata.csv') %in% files_already_present){
     return()
   }
@@ -118,15 +120,15 @@ download_poverty_data <- function(state_chosen){
   pums <- pums %>%
     mutate(puma_all = glue('{ST}{PUMA}'))
 
-  dir.create(here('scripts', 'R', 'downloaded_data', 'poverty_data_x_state'))
+  dir.create(here('data_downloading', 'R', 'poverty_data_x_state'))
   v <- pums %>%
-    write_csv(here('scripts', 'R', 'downloaded_data', 'poverty_data_x_state', glue('{state_chosen}_rawdata.csv')))
+    write_csv(here('data_downloading', 'R', 'poverty_data_x_state', glue('{state_chosen}_rawdata.csv')))
 
 }
 
 get_poverty_rates_x_state <- function(state_chosen, hisp_included=TRUE){
 
-  pums <- vroom(here('scripts', 'R', 'downloaded_data', 'poverty_data_x_state', glue('{state_chosen}_rawdata.csv')),
+  pums <- vroom(here('data_downloading', 'R', 'poverty_data_x_state', glue('{state_chosen}_rawdata.csv')),
                 col_types = cols())
 
   puma2ct <- read_csv("https://www2.census.gov/geo/docs/maps-data/data/rel/2010_Census_Tract_to_2010_PUMA.txt")
@@ -153,7 +155,7 @@ get_poverty_rates_x_state <- function(state_chosen, hisp_included=TRUE){
   v <- county_poverty %>%
     bind_rows() %>%
     rename(sex = SEX_label, race = RAC1P_label) %>%
-    write_csv(here('scripts', 'R', 'downloaded_data', 'poverty_data_x_state', glue('{state_chosen}_{ifelse(hisp_included,"hisp","nohisp")}.csv')))
+    write_csv(here('data_downloading', 'R', 'poverty_data_x_state', glue('{state_chosen}_{ifelse(hisp_included,"hisp","nohisp")}.csv')))
 
 }
 
@@ -169,7 +171,7 @@ state.abb %>%
 
 # merge all files
 files_to_load <- state.abb %>%
-  map(~ here('scripts', 'R', 'downloaded_data', 'poverty_data_x_state', glue('{.x}_{ifelse(hisp_included,"hisp","nohisp")}.csv')))
+  map(~ here('data_downloading', 'R', 'poverty_data_x_state', glue('{.x}_{ifelse(hisp_included,"hisp","nohisp")}.csv')))
 names(files_to_load) <- state.abb
 
 files_to_load %>%
@@ -177,7 +179,7 @@ files_to_load %>%
   drop_na() %>%
   rename(age = age_census_largebins) %>%
   # rename states to full names
-  inner_join(read_csv(here('scripts', 'R', 'downloaded_data', 'state_codes.csv')) %>%
+  inner_join(read_csv(here('data_downloading', 'R', 'state_codes.csv')) %>%
                select(state_name, state_abbr),
              by = c('state' = 'state_abbr')) %>%
   select(-state) %>%
@@ -188,23 +190,8 @@ files_to_load %>%
   pivot_wider(names_from = poverty_level,
               values_from = proportion,
               names_prefix = 'poverty_') %>%
-  write_csv(here('scripts', 'R', 'downloaded_data', glue('poverty_data_{ifelse(hisp_included,"hisp","nohisp")}.csv')))
+  write_csv(here('data_downloading', 'R', glue('poverty_data_{ifelse(hisp_included,"hisp","nohisp")}.csv')))
 
-
-# checks for counties vs pumas
-# counties that contain more than one puma
-# x1 <- puma2ct %>% group_by(STATEFP, COUNTYFP) %>% summarise(n = length(unique(PUMA5CE))) %>%
-#   filter(n > 1)
-# x2 <- puma2ct %>% group_by(STATEFP, PUMA5CE) %>% mutate(n = length(unique(COUNTYFP))) %>%
-#   filter(n > 1)
-# x1 %>% inner_join(x2, by = c('STATEFP', 'COUNTYFP')) %>%
-#   distinct(STATEFP, COUNTYFP)
-#
-# puma2ct %>% filter(PUMA5CE == '00200' & STATEFP == '01') %>%
-#   distinct(COUNTYFP, PUMA5CE)
-#
-# puma2ct %>% filter(COUNTYFP == '089' & STATEFP == '01') %>%
-#   distinct(COUNTYFP, PUMA5CE)
 
 
 

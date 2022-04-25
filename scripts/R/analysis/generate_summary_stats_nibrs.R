@@ -1,3 +1,4 @@
+renv::restore()
 
 library(lubridate)
 library(stringr)
@@ -7,15 +8,17 @@ library(here)
 library(xtable)
 library(glue)
 
-df <- vroom(here('data', 'output', 'cannabis_2010-2019_allincidents_summary.csv'))
+
+df <- vroom(here('data', 'NIBRS', 'raw', 'cannabis_allyears__all_incidents_summary.csv'))
 sc <- vroom(here('data', 'output', 'urban_codes_x_county_2013.csv')) %>%
   mutate(is_metro = ifelse(urbancounty == 'Large metro' | urbancounty == 'Small metro', 'metro', 'nonmetro'))
-lc <- vroom(here('data', 'output', 'leaic.tsv')) %>%
+lc <- vroom(here('data', 'misc', 'leaic.tsv')) %>%
   distinct(FIPS, ORI9)
 
 sc <- lc %>% inner_join(sc) %>% rename(ori = ORI9) %>%
   distinct(ori, FIPS, is_metro)
 df <- df %>% dplyr::inner_join(sc, by = 'ori')
+
 
 
 # transform locations
@@ -88,6 +91,7 @@ get_incidents_info <- function(x){
   return(tb)
 }
 
+# eda ----
 
 df_list <- list(
   df %>% filter(race == 'black' & is_metro == 'metro'),
@@ -134,7 +138,6 @@ print(rbind(
 ) %>% xtable(.,  align = rep('c', 10)),
          include.rownames=FALSE)  
   
-
 
 print(rbind(
   c('# incidents', n_incidents_drugs),

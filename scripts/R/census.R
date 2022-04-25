@@ -1,4 +1,4 @@
-api = "1d38f929e06920fe9b0245a9d87968d98ce2bfd6"
+api = "" # add your own api
 Sys.setenv(CENSUS_KEY=api)
 
 
